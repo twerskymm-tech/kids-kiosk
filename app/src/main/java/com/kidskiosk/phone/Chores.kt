@@ -33,6 +33,8 @@ object Chores {
         }
     }
 
+    fun setAll(c: Context, list: List<Chore>) = save(c, list)
+
     private fun save(c: Context, list: List<Chore>) {
         val a = JSONArray()
         list.forEach { a.put(JSONObject().put("id", it.id).put("kid", it.kid).put("title", it.title).put("days", it.days)) }

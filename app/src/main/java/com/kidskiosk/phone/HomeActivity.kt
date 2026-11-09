@@ -89,11 +89,23 @@ class HomeActivity : AppCompatActivity() {
         handler.removeCallbacks(refresh); handler.post(refresh)
         if (!Prefs.hasPin(this)) PinDialog.create(this) { openParent() }
         Updater.autoCheck(this)
+        Remote.onChange = { if (visible) reloadAll() }
+    }
+
+    /** A change came in from the parent's control panel. */
+    private fun reloadAll() {
+        Kiosk.apply(this)
+        greeting.text = greetingText()
+        fillTiles()
+        fillBoard()
+        fillCalls(callRow); fillCalls(lockCallRow)
+        updateLock()
     }
 
     override fun onPause() {
         super.onPause()
         visible = false
+        Remote.onChange = null
         handler.removeCallbacks(refresh)
     }
 

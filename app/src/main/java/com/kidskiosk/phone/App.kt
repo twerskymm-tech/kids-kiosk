@@ -19,6 +19,7 @@ class App : Application() {
     private val tick = object : Runnable {
         override fun run() {
             check()
+            Remote.autoSync(this@App)
             handler.postDelayed(this, 20_000L)
         }
     }

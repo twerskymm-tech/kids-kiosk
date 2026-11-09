@@ -71,3 +71,14 @@ Download the newest `kids-home.apk`, turn on USB debugging in parent mode, plug 
 ## Removing the lock
 
 Parent mode → **Remove full lock (before uninstalling)**. After that the app can be uninstalled like any other.
+
+## Remote control from your own phone
+
+The kiosk can be controlled from **https://kids-home-control-4e3b85f5.base44.app** (a Base44 app on the parent's account).
+
+1. On the kids' phone, open parent mode and tap **Connect remote control**. It shows an 8-letter code.
+2. On your own phone, open the link above, sign in, and type the code.
+
+From then on the kiosk checks in about once a minute: it reports its settings, chores, ticks and installed apps,
+and picks up changes made on the web page (apps, chores, kids' names, call buttons, bedtime, Shabbos lock, unlock for a while).
+Changes wait while parent mode is open on the phone. The PIN, photo, location, calling app and pictures stay on the phone only.

@@ -56,6 +56,11 @@ class ParentActivity : AppCompatActivity() {
     private lateinit var bedStartBtn: Button
     private lateinit var bedEndBtn: Button
     private var bedStart = 0
+    private lateinit var remoteBox: LinearLayout
+    private val uiHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val remoteTick = object : Runnable {
+        override fun run() { fillRemote(); uiHandler.postDelayed(this, 3000L) }
+    }
     private var bedEnd = 0
 
     private val pickPhoto = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
@@ -95,10 +100,12 @@ class ParentActivity : AppCompatActivity() {
         keepOpen()
         Kiosk.unlock(this)
         refreshPreview()
+        uiHandler.removeCallbacks(remoteTick); uiHandler.post(remoteTick)
     }
 
     override fun onPause() {
         super.onPause()
+        uiHandler.removeCallbacks(remoteTick)
         save()
     }
 
@@ -127,6 +134,11 @@ class ParentActivity : AppCompatActivity() {
         row.addView(button("Phone settings") { open(Intent(Settings.ACTION_SETTINGS)) }, lp(0, dp(52), 1f).apply { marginEnd = dp(6) })
         row.addView(button("Play Store") { openPkg("com.android.vending") }, lp(0, dp(52), 1f).apply { marginStart = dp(6) })
         body.addView(row, lp(MATCH, WRAP).apply { topMargin = dp(8) })
+
+        // Remote control from the parent's phone
+        val remote = card("Remote control", "Change apps, chores, call buttons and locks from your own phone, from anywhere.")
+        remoteBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        remote.addView(remoteBox, lp(MATCH, WRAP))
 
         // Kids' apps
         val apps = card("Kids' apps", "Tick the apps that show on the kids' screen. Install new ones from the Play Store first.")
@@ -238,6 +250,53 @@ class ParentActivity : AppCompatActivity() {
         sec.addView(button("Check for app update") { toast("Checking..."); Updater.check(this) { m -> toast(m) } }, lp(MATCH, dp(52)).apply { topMargin = dp(6) })
         if (Kiosk.isOwner(this)) sec.addView(button("Remove full lock (before uninstalling)") { confirmRemove() }, lp(MATCH, dp(52)).apply { topMargin = dp(6) })
         sec.addView(text("Version ${runCatching { packageManager.getPackageInfo(packageName, 0).versionName }.getOrDefault("")}", 12f, muted), lp(MATCH, WRAP).apply { topMargin = dp(8) })
+    }
+
+    // ── Remote control ──
+
+    private var remoteShown = ""
+    private fun fillRemote() {
+        if (!::remoteBox.isInitialized) return
+        val on = Remote.isOn(this); val linked = Remote.isLinked(this); val code = Remote.pairCode(this)
+        val last = Remote.lastOk(this)
+        val status = when {
+            !on -> ""
+            linked -> "Connected" + (if (Remote.phoneName(this).isNotEmpty()) " as \"${Remote.phoneName(this)}\"" else "") +
+                ". Last check-in: " + (if (last == 0L) "not yet" else android.text.format.DateUtils.getRelativeTimeSpanString(last).toString()) +
+                (if (Remote.lastError(this).isNotEmpty()) "\nLast try failed: ${Remote.lastError(this)}" else "")
+            else -> if (last == 0L && Remote.lastError(this).isNotEmpty()) "Can't reach the control panel: ${Remote.lastError(this)}. Check Wi-Fi." else ""
+        }
+        val key = "$on|$linked|$code|$status"
+        if (key == remoteShown) return
+        remoteShown = key
+        remoteBox.removeAllViews()
+        when {
+            !on -> remoteBox.addView(button("Connect remote control", primary = true) { Remote.connect(this) { fillRemote() } }, lp(MATCH, dp(52)).apply { topMargin = dp(8) })
+            !linked -> {
+                remoteBox.addView(text("On your own phone, open", 15f, ink), lp(MATCH, WRAP).apply { topMargin = dp(8) })
+                remoteBox.addView(text(Remote.SITE, 16f, brand, bold = true))
+                remoteBox.addView(text("sign in, and type this code:", 15f, ink))
+                remoteBox.addView(text(code.chunked(4).joinToString(" "), 40f, ink, bold = true).apply {
+                    gravity = Gravity.CENTER; letterSpacing = 0.12f; typeface = android.graphics.Typeface.MONOSPACE
+                }, lp(MATCH, WRAP).apply { topMargin = dp(8); bottomMargin = dp(4) })
+                if (status.isNotEmpty()) remoteBox.addView(text(status, 13f, 0xFFC0392B.toInt()))
+                remoteBox.addView(text("The code works for 15 minutes while this screen is open.", 13f, muted))
+                remoteBox.addView(button("Cancel") { Remote.disconnect(this); fillRemote() }, lp(MATCH, dp(48)).apply { topMargin = dp(8) })
+            }
+            else -> {
+                remoteBox.addView(text(status, 15f, ink), lp(MATCH, WRAP).apply { topMargin = dp(8) })
+                remoteBox.addView(text("Changes you make there reach this phone within a minute. Changes here show up there too.", 13f, muted))
+                val r = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+                r.addView(button("Check in now") { save(); Remote.syncNow(this) { remoteShown = ""; fillRemote(); toast("Checked in") } }, lp(0, dp(48), 1f).apply { marginEnd = dp(6) })
+                r.addView(button("Disconnect") {
+                    AlertDialog.Builder(this).setTitle("Disconnect remote control?")
+                        .setMessage("This phone stops listening to the control panel. You can connect again any time.")
+                        .setPositiveButton("Disconnect") { _, _ -> Remote.disconnect(this); fillRemote() }
+                        .setNegativeButton("Cancel", null).show()
+                }, lp(0, dp(48), 1f).apply { marginStart = dp(6) })
+                remoteBox.addView(r, lp(MATCH, WRAP).apply { topMargin = dp(8) })
+            }
+        }
     }
 
     // ── Saving ──
