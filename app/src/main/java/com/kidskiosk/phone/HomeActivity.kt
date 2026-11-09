@@ -98,6 +98,9 @@ class HomeActivity : AppCompatActivity() {
     /** A change came in from the parent's control panel. */
     private fun reloadAll() {
         Kiosk.apply(this)
+        loadPhoto()
+        shownScene = ""
+
         greeting.text = greetingText()
         fillTiles()
         fillBoard()

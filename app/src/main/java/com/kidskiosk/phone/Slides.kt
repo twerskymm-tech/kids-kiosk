@@ -78,6 +78,22 @@ object Slides {
         }.start()
     }
 
+    /** Download one picture to a file, then call done on the main thread (only if it worked). */
+    fun download(c: Context, url: String, to: File, done: () -> Unit) {
+        if (!url.startsWith("https://")) return
+        Thread {
+            val ok = runCatching {
+                val conn = URL(url).openConnection() as HttpURLConnection
+                conn.connectTimeout = 20000; conn.readTimeout = 60000
+                if (conn.responseCode != 200) error("download ${conn.responseCode}")
+                val tmp = File(to.parentFile, to.name + ".part")
+                conn.inputStream.use { inp -> tmp.outputStream().use { inp.copyTo(it) } }
+                tmp.renameTo(to)
+            }.getOrDefault(false)
+            if (ok) main.post { done(); Remote.onChange?.invoke() }
+        }.start()
+    }
+
     fun decode(f: File, maxSide: Int): Bitmap? = runCatching {
         val o = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeFile(f.path, o)

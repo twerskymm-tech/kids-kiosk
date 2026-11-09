@@ -144,6 +144,16 @@ object Remote {
             .put("paused_until", Prefs.pausedUntil(c))
             .put("chores_on", Chores.enabled(c))
             .put("photos", Slides.json(c))
+            .put("gl_split", Prefs.greenlightSplit(c))
+            .put("call_app", Prefs.callApp(c))
+            .put("has_place", Prefs.hasPlace(c))
+            .put("lat", Prefs.lat(c))
+            .put("lon", Prefs.lon(c))
+            .put("israel", Prefs.israel(c))
+            .put("candle_min", Prefs.candleMin(c))
+            .put("havdalah_min", Prefs.havdalahMin(c))
+            .put("background", p(c).getString("bg_url", "") ?: "")
+            .put("scenes", JSONObject().apply { Scenes.ALL.keys.forEach { k -> put(k, p(c).getString("scene_$k", "") ?: "") } })
             .put("chores", JSONArray().apply {
                 Chores.all(c).forEach { put(JSONObject().put("id", it.id).put("kid", it.kid).put("title", it.title).put("days", it.days).put("cents", it.cents)) }
             })
@@ -158,6 +168,8 @@ object Remote {
             .put("earned", Chores.earnedAll(c))
             .put("lock", JSONObject().put("reason", lock.reason.name).put("until", lock.until))
             .put("call_app", Prefs.callApp(c))
+            .put("scene_names", JSONObject().apply { Scenes.ALL.forEach { (k, v) -> put(k, v) } })
+            .put("has_own_background", HomeActivity.photoFile(c).exists())
     }
 
     // ── Changes from the parent ──
@@ -182,6 +194,31 @@ object Remote {
         if (s.has("paused_until")) Prefs.setPausedUntil(c, s.optLong("paused_until"))
         // Payouts: amounts to take off what each kid is owed (each change arrives once)
         s.optJSONObject("paid")?.let { j -> j.keys().forEach { k -> Chores.paid(c, k, j.optInt(k, 0)) } }
+        if (s.has("gl_split")) Prefs.setGreenlightSplit(c, s.optBoolean("gl_split"))
+        s.optString("call_app", "").takeIf { it.isNotBlank() && Kiosk.isInstalled(c, it) }?.let { Prefs.setCallApp(c, it) }
+        if (s.has("lat") && s.has("lon")) {
+            val la = s.optDouble("lat", Double.NaN); val lo = s.optDouble("lon", Double.NaN)
+            if (la in -90.0..90.0 && lo in -180.0..180.0) Prefs.setPlace(c, la, lo)
+        }
+        if (s.has("israel")) Prefs.setIsrael(c, s.optBoolean("israel"))
+        if (s.has("candle_min") || s.has("havdalah_min")) Prefs.setMinutes(c,
+            s.optInt("candle_min", Prefs.candleMin(c)).coerceIn(0, 90), s.optInt("havdalah_min", Prefs.havdalahMin(c)).coerceIn(0, 120))
+        if (s.has("background")) {
+            val url = s.optString("background")
+            p(c).edit().putString("bg_url", url).apply()
+            if (url.isEmpty()) { HomeActivity.photoFile(c).delete(); Prefs.bumpPhoto(c) }
+            else Slides.download(c, url, HomeActivity.photoFile(c)) { Prefs.bumpPhoto(c) }
+        }
+        s.optJSONObject("scenes")?.let { j ->
+            j.keys().forEach { k ->
+                if (k !in Scenes.ALL) return@forEach
+                val url = j.optString(k)
+                p(c).edit().putString("scene_$k", url).apply()
+                if (url.isEmpty()) { Scenes.photoFile(c, k).delete(); Prefs.bumpPhoto(c) }
+                else Slides.download(c, url, Scenes.photoFile(c, k)) { Prefs.bumpPhoto(c) }
+            }
+        }
+        if (s.optBoolean("update_now")) Updater.check(c, null)
         if (s.has("chores_on")) Chores.setEnabled(c, s.optBoolean("chores_on"))
         s.optJSONArray("photos")?.let { Slides.set(c, it) }
         s.optJSONArray("chores")?.let { a ->
