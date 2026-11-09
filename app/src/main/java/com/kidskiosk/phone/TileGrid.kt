@@ -13,7 +13,7 @@ import kotlin.math.min
  * picks the number of columns that gives the biggest tiles, and shrinks the tiles (icon and name too) as apps are added.
  */
 class TileGrid(c: Context) : ViewGroup(c) {
-    private val gap = c.dp(12)
+    private val gap = c.dp(10)
     private val maxTile = c.dp(190)
     private var cols = 2
     private var cell = 0
@@ -31,6 +31,15 @@ class TileGrid(c: Context) : ViewGroup(c) {
             val ch = (h - gap * (rows - 1)) / rows
             val size = min(cw, (ch / 0.95).toInt())
             if (size > best) { best = size; bestCols = c }
+        }
+        // A lone tile on the last row looks untidy: use full rows when the tiles stay big enough.
+        if (n % bestCols != 0) {
+            for (c in min(5, n) downTo 2) {
+                if (n % c != 0) continue
+                val rows = n / c
+                val size = min((w - gap * (c - 1)) / c, (((h - gap * (rows - 1)) / rows) / 0.95).toInt())
+                if (size >= best * 0.6 && size >= context.dp(96)) { best = size; bestCols = c; break }
+            }
         }
         cols = bestCols
         cell = min(best, maxTile)
@@ -73,24 +82,24 @@ class Tile(c: Context) : LinearLayout(c) {
         addView(icon)
         addView(label)
         label.gravity = android.view.Gravity.CENTER
-        label.setTextColor(android.graphics.Color.WHITE)
+        label.setTextColor(0xFF1F2333.toInt())
         label.setTypeface(label.typeface, android.graphics.Typeface.BOLD)
         label.maxLines = 2
+        label.setLineSpacing(0f, 0.9f)
         label.ellipsize = android.text.TextUtils.TruncateAt.END
     }
 
     fun fit(w: Int, h: Int) {
         if (fitted == w * 10000 + h) return
         fitted = w * 10000 + h
-        val iconSize = (min(w, h) * 0.46).toInt()
+        val iconSize = (min(w, h) * 0.5).toInt()
         icon.layoutParams = LayoutParams(iconSize, iconSize)
-        icon.setPadding(iconSize / 10, iconSize / 10, iconSize / 10, iconSize / 10)
-        icon.background = rounded(android.graphics.Color.WHITE, iconSize * 0.26f)
-        val px = (min(w, h) * 0.105f).coerceIn(context.dpf(11f), context.dpf(21f))
+        icon.scaleType = ImageView.ScaleType.FIT_CENTER
+        val px = (min(w, h) * 0.1f).coerceIn(context.dpf(11f), context.dpf(19f))
         label.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, px)
         label.layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply { topMargin = (h * 0.05).toInt() }
         setPadding(w / 20, 0, w / 20, 0)
-        background = rounded(tileColor, min(w, h) * 0.16f)
+        background = rounded(0xF2FFFFFF.toInt(), min(w, h) * 0.18f)
     }
 
     var tileColor = 0

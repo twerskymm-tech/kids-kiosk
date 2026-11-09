@@ -124,7 +124,7 @@ class HomeActivity : AppCompatActivity() {
         val col = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(dp(20), dp(24), dp(20), dp(16))
+            setPadding(dp(16), dp(24), dp(16), dp(14))
         }
         greeting = text("", 22f, 0xEEFFFFFF.toInt(), bold = true, gravity = Gravity.CENTER)
         greetingNames = text("", 26f, Color.WHITE, bold = true, gravity = Gravity.CENTER)
@@ -141,14 +141,14 @@ class HomeActivity : AppCompatActivity() {
         }, lp(MATCH, WRAP))
 
         board = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        col.addView(board, lp(MATCH, WRAP).apply { topMargin = dp(14) })
+        col.addView(board, lp(MATCH, WRAP).apply { topMargin = dp(18) })
 
         grid = TileGrid(this)
         col.addView(grid, lp(MATCH, 0, 1f).apply { topMargin = dp(14) })
 
         callRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        col.addView(callRow, lp(MATCH, WRAP).apply { topMargin = dp(12) })
-        col.addView(controls(), lp(MATCH, WRAP).apply { topMargin = dp(12) })
+        col.addView(callRow, lp(MATCH, WRAP).apply { topMargin = dp(14) })
+        col.addView(controls(), lp(MATCH, WRAP).apply { topMargin = dp(10) })
 
         setupNote = text("Setup not finished: the phone isn't locked yet. See the setup guide.", 13f, 0xFFFFE08A.toInt(), gravity = Gravity.CENTER)
         col.addView(setupNote, lp(MATCH, WRAP).apply { topMargin = dp(8) })
@@ -203,8 +203,8 @@ class HomeActivity : AppCompatActivity() {
         val box = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(12), dp(2), dp(6), dp(2))
-            background = rounded(0x55000000, dpf(24f))
+            setPadding(dp(14), dp(2), dp(6), dp(2))
+            background = rounded(0x66000000, dpf(26f))
         }
         val audio = getSystemService(Context.AUDIO_SERVICE) as AudioManager
         val maxVol = audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
@@ -286,7 +286,7 @@ class HomeActivity : AppCompatActivity() {
         tiles.forEachIndexed { i, t ->
             val tile = Tile(this).apply {
                 tileColor = TILE_COLORS[i % TILE_COLORS.size]
-                elevation = dpf(6f)
+                elevation = 0f
                 icon.setImageDrawable(runCatching { pm.getApplicationIcon(t.pkg) }.getOrNull())
                 this.label.text = t.label
                 setOnClickListener { if (t.kid == null) open(t.launch) else openAs(t.pkg, t.launch, t.kid) }
@@ -298,7 +298,7 @@ class HomeActivity : AppCompatActivity() {
         if (photos.isNotEmpty()) {
             val tile = Tile(this).apply {
                 tileColor = TILE_COLORS[tiles.size % TILE_COLORS.size]
-                elevation = dpf(6f)
+                elevation = 0f
                 Slides.decode(photos.first(), 300)?.let { bmp ->
                     icon.setImageDrawable(androidx.core.graphics.drawable.RoundedBitmapDrawableFactory.create(resources, bmp).apply {
                         cornerRadius = minOf(bmp.width, bmp.height) / 5f
@@ -342,8 +342,7 @@ class HomeActivity : AppCompatActivity() {
             val card = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 setPadding(dp(10), dp(10), dp(10), dp(8))
-                background = rounded(0xE6FFFFFF.toInt(), dpf(18f))
-                elevation = dpf(4f)
+                background = rounded(0xF2FFFFFF.toInt(), dpf(18f))
             }
             val list = Chores.today(this, kid)
             val left = list.count { it.id !in done }
@@ -372,14 +371,14 @@ class HomeActivity : AppCompatActivity() {
                     background = if (isDone) rounded(0xFF22B573.toInt(), dpf(14f)) else rounded(Color.WHITE, dpf(14f), dp(2), 0xFFB8BCCB.toInt())
                 }
                 row.addView(box, lp(dp(28), dp(28)))
-                row.addView(text(ch.title, 16f, if (isDone) 0xFF9AA0AE.toInt() else 0xFF1F2333.toInt(), bold = !isDone).apply {
+                row.addView(text(ch.title.replaceFirstChar { it.uppercase() }, 15f, if (isDone) 0xFF9AA0AE.toInt() else 0xFF1F2333.toInt(), bold = !isDone).apply {
                     if (isDone) paintFlags = paintFlags or android.graphics.Paint.STRIKE_THRU_TEXT_FLAG
                     maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END
                 }, lp(0, WRAP, 1f).apply { marginStart = dp(10) })
                 card.addView(row, lp(MATCH, WRAP))
             }
             if (list.size > 6) card.addView(text("+${list.size - 6} more", 13f, 0xFF6B7080.toInt()))
-            board.addView(card, lp(0, WRAP, 1f).apply { if (i > 0) marginStart = dp(8) })
+            board.addView(card, lp(0, WRAP, 1f).apply { if (i > 0) marginStart = dp(10) })
         }
     }
 
@@ -394,7 +393,7 @@ class HomeActivity : AppCompatActivity() {
             val number = Prefs.callNumber(this, i).trim()
             if (number.isEmpty()) continue
             val b = SlideToCall(this, Prefs.callName(this, i)) { call(number) }
-            row.addView(b, lp(0, dp(64), 1f).apply { setMargins(dp(5), 0, dp(5), 0) })
+            row.addView(b, lp(0, dp(64), 1f).apply { if (row.childCount > 0) marginStart = dp(10) })
         }
         row.visibility = if (row.childCount == 0) View.GONE else View.VISIBLE
     }
