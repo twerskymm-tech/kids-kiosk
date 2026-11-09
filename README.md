@@ -16,7 +16,19 @@ and volume and brightness sliders. Nothing else on the phone can be reached.
 Every change to this repo builds a new app on GitHub. The newest one is always at
 **Releases → latest → `kids-home.apk`** (on the right side of the repo page on GitHub).
 
-## One-time setup (Windows PC, about 20 minutes)
+## Easiest setup: scan a QR code (no computer)
+
+Needs this repo to be public, because the phone downloads the app from the latest release.
+
+1. Factory reset the phone (recovery mode: plug into a computer by USB, hold Side + Volume Down until it restarts,
+   then hold Side + Volume Up until the Samsung logo; pick Wipe data/factory reset).
+2. On the very first welcome screen, tap the same empty spot **6 times quickly**. A QR scanner opens
+   (connect Wi-Fi if it asks).
+3. Scan **Releases → latest → `phone-setup-qr.png`**.
+4. Tap Next / Accept on each screen and skip any Google sign-in. The phone opens on the kids' screen and asks for a PIN.
+5. Continue from step 7 of the computer setup below.
+
+## One-time setup with a Windows PC (about 20 minutes)
 
 Full lock needs the app to be the phone's "device owner". Android only allows that on a phone that was just
 factory reset and has **no accounts signed in yet** (no Google account, no Samsung account).
