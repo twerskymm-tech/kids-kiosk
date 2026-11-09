@@ -43,6 +43,9 @@ class HomeActivity : AppCompatActivity() {
     private lateinit var greeting: TextView
     private lateinit var grid: TileGrid
     private lateinit var board: LinearLayout
+    private lateinit var rootFrame: FrameLayout
+    private val totals = mutableMapOf<String, TextView>()
+    private val showEarned = mutableMapOf<String, Int>()   // while a coin is flying, the old total stays up
     private lateinit var greetingNames: TextView
     private lateinit var main: View
     private lateinit var lockLayer: LinearLayout
@@ -113,6 +116,7 @@ class HomeActivity : AppCompatActivity() {
 
     private fun build(): View {
         val root = FrameLayout(this)
+        rootFrame = root
         bg = ImageView(this).apply { scaleType = ImageView.ScaleType.CENTER_CROP }
         root.addView(bg, FrameLayout.LayoutParams(MATCH, MATCH))
         // soft dark shading so white text reads on any photo
@@ -124,24 +128,24 @@ class HomeActivity : AppCompatActivity() {
         val col = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(dp(16), dp(24), dp(16), dp(14))
+            setPadding(dp(16), dp(14), dp(16), dp(14))
         }
-        greeting = text("", 22f, 0xEEFFFFFF.toInt(), bold = true, gravity = Gravity.CENTER)
-        greetingNames = text("", 26f, Color.WHITE, bold = true, gravity = Gravity.CENTER)
+        greeting = text("", 18f, Color.WHITE, bold = true, gravity = Gravity.CENTER).apply { maxLines = 1 }
+        greetingNames = text("", 18f, Color.WHITE, bold = true)   // kept for compatibility, not shown
         col.addView(greeting, lp(MATCH, WRAP))
-        col.addView(greetingNames, lp(MATCH, WRAP))
         col.addView(TextClock(this).apply {
-            textSize = 72f; setTextColor(Color.WHITE); gravity = Gravity.CENTER
+            textSize = 50f; setTextColor(Color.WHITE); gravity = Gravity.CENTER
             format12Hour = "h:mm"; format24Hour = "H:mm"
             setTypeface(typeface, android.graphics.Typeface.BOLD)
-        }, lp(MATCH, WRAP).apply { topMargin = dp(4) })
+            includeFontPadding = false
+        }, lp(MATCH, WRAP).apply { topMargin = dp(2) })
         col.addView(TextClock(this).apply {
-            textSize = 18f; setTextColor(0xDDFFFFFF.toInt()); gravity = Gravity.CENTER
+            textSize = 15f; setTextColor(0xDDFFFFFF.toInt()); gravity = Gravity.CENTER
             format12Hour = "EEEE, MMMM d"; format24Hour = "EEEE, MMMM d"
         }, lp(MATCH, WRAP))
 
         board = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        col.addView(board, lp(MATCH, WRAP).apply { topMargin = dp(18) })
+        col.addView(board, lp(MATCH, WRAP).apply { topMargin = dp(14) })
 
         grid = TileGrid(this)
         col.addView(grid, lp(MATCH, 0, 1f).apply { topMargin = dp(14) })
@@ -246,9 +250,8 @@ class HomeActivity : AppCompatActivity() {
         val h = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
         val part = when (h) { in 4..11 -> "Good morning"; in 12..16 -> "Good afternoon"; else -> "Good evening" }
         val names = Prefs.kidNames(this).trim()
-        greetingNames.text = names
-        greetingNames.visibility = if (names.isEmpty()) View.GONE else View.VISIBLE
-        return if (names.isEmpty()) "$part!" else part
+        greetingNames.visibility = View.GONE
+        return if (names.isEmpty()) "$part!" else "$part, $names"
     }
 
     private fun loadPhoto() {
@@ -327,15 +330,17 @@ class HomeActivity : AppCompatActivity() {
     }
 
     /**
-     * Chores board: one card per kid with all of today's chores. Tap a chore to check it off;
-     * tap it again to uncheck it (if it was ticked by mistake).
+     * Chores board: one card per kid with all of today's chores and what she has earned.
+     * Tap a chore to check it off (a coin flies into her total); tap again to uncheck it.
      */
     private fun fillBoard() {
         board.removeAllViews()
+        totals.clear()
         val kids = Chores.kids(this)
         if (!Chores.enabled(this) || kids.isEmpty() || Chores.all(this).isEmpty()) { board.visibility = View.GONE; return }
         board.visibility = View.VISIBLE
         val done = Chores.done(this)
+        val anyMoney = Chores.all(this).any { it.cents > 0 } || kids.any { Chores.earned(this, it) > 0 }
         val kidColors = intArrayOf(0xFFFF6B9A.toInt(), 0xFF4D96FF.toInt(), 0xFFFFB84C.toInt(), 0xFF6BCB77.toInt())
         kids.forEachIndexed { i, kid ->
             val color = kidColors[i % kidColors.size]
@@ -346,13 +351,20 @@ class HomeActivity : AppCompatActivity() {
             }
             val list = Chores.today(this, kid)
             val left = list.count { it.id !in done }
-            // Header: name on a colored strip, and how many are left
+            // Header: name and what's left on a colored strip, her money under the name
             val head = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
                 setPadding(dp(10), dp(6), dp(10), dp(6))
                 background = rounded(color, dpf(12f))
             }
-            head.addView(text(kid, 17f, Color.WHITE, bold = true).apply { maxLines = 1 }, lp(0, WRAP, 1f))
+            val nameCol = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+            nameCol.addView(text(kid, 17f, Color.WHITE, bold = true).apply { maxLines = 1 })
+            if (anyMoney) {
+                val total = text("\uD83D\uDCB0 " + Chores.money(showEarned[kid] ?: Chores.earned(this, kid)), 15f, Color.WHITE, bold = true)
+                totals[kid] = total
+                nameCol.addView(total)
+            }
+            head.addView(nameCol, lp(0, WRAP, 1f))
             head.addView(text(when {
                 list.isEmpty() -> ""
                 left == 0 -> "\u2B50 Done!"
@@ -364,8 +376,7 @@ class HomeActivity : AppCompatActivity() {
                 val isDone = ch.id in done
                 val row = LinearLayout(this).apply {
                     orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-                    setPadding(dp(4), dp(7), dp(4), dp(7))
-                    setOnClickListener { Chores.toggle(this@HomeActivity, ch.id); fillBoard() }
+                    setPadding(dp(4), dp(7), dp(2), dp(7))
                 }
                 val box = text(if (isDone) "\u2713" else "", 17f, Color.WHITE, bold = true, gravity = Gravity.CENTER).apply {
                     background = if (isDone) rounded(0xFF22B573.toInt(), dpf(14f)) else rounded(Color.WHITE, dpf(14f), dp(2), 0xFFB8BCCB.toInt())
@@ -374,12 +385,90 @@ class HomeActivity : AppCompatActivity() {
                 row.addView(text(ch.title.replaceFirstChar { it.uppercase() }, 15f, if (isDone) 0xFF9AA0AE.toInt() else 0xFF1F2333.toInt(), bold = !isDone).apply {
                     if (isDone) paintFlags = paintFlags or android.graphics.Paint.STRIKE_THRU_TEXT_FLAG
                     maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END
-                }, lp(0, WRAP, 1f).apply { marginStart = dp(10) })
+                }, lp(0, WRAP, 1f).apply { marginStart = dp(8) })
+                if (ch.cents > 0) row.addView(text(Chores.money(ch.cents), 13f, if (isDone) 0xFF9AA0AE.toInt() else 0xFF15803D.toInt(), bold = true).apply {
+                    background = rounded(if (isDone) 0xFFF0F1F4.toInt() else 0xFFDCFCE7.toInt(), dpf(10f))
+                    setPadding(dp(7), dp(2), dp(7), dp(2))
+                }, lp(WRAP, WRAP).apply { marginStart = dp(4) })
+                row.setOnClickListener { tapChore(ch, box) }
                 card.addView(row, lp(MATCH, WRAP))
             }
             if (list.size > 6) card.addView(text("+${list.size - 6} more", 13f, 0xFF6B7080.toInt()))
             board.addView(card, lp(0, WRAP, 1f).apply { if (i > 0) marginStart = dp(10) })
         }
+    }
+
+    private fun tapChore(ch: Chores.Chore, from: View) {
+        val before = Chores.earned(this, ch.kid)
+        val nowDone = Chores.toggle(this, ch.id)
+        if (!nowDone || ch.cents <= 0) { fillBoard(); return }
+        val start = locIn(from).let { (x, y) -> Pair(x + from.width / 2f, y + from.height / 2f) }
+        showEarned[ch.kid] = before
+        fillBoard()
+        board.post { flyCoins(ch.kid, start, ch.cents, before) }
+    }
+
+    private fun locIn(v: View): Pair<Float, Float> {
+        val a = IntArray(2); val r = IntArray(2)
+        v.getLocationInWindow(a); rootFrame.getLocationInWindow(r)
+        return Pair((a[0] - r[0]).toFloat(), (a[1] - r[1]).toFloat())
+    }
+
+    /** Coins fly from the chore up into her total, then the total counts up and bounces. */
+    private fun flyCoins(kid: String, start: Pair<Float, Float>, cents: Int, before: Int) {
+        val target = totals[kid]
+        if (target == null) { showEarned.remove(kid); fillBoard(); return }
+        val end = locIn(target).let { (x, y) -> Pair(x + dpf(14f), y + target.height / 2f) }
+        val size = dp(34)
+        // "+$0.50" rises from the chore
+        val plus = text("+" + Chores.money(cents), 20f, 0xFF15803D.toInt(), bold = true).apply {
+            background = rounded(Color.WHITE, dpf(12f)); setPadding(dp(8), dp(2), dp(8), dp(2)); elevation = dpf(8f)
+        }
+        rootFrame.addView(plus, FrameLayout.LayoutParams(WRAP, WRAP))
+        plus.x = start.first; plus.y = start.second - dp(10)
+        plus.animate().translationYBy(-dpf(40f)).alpha(0f).setStartDelay(250).setDuration(900)
+            .withEndAction { rootFrame.removeView(plus) }.start()
+        val coins = 3
+        for (n in 0 until coins) {
+            val coin = text("\uD83E\uDE99", 26f, Color.WHITE, gravity = Gravity.CENTER).apply { elevation = dpf(10f) }
+            rootFrame.addView(coin, FrameLayout.LayoutParams(size, size))
+            val sx = start.first - size / 2f; val sy = start.second - size / 2f
+            val ex = end.first - size / 2f; val ey = end.second - size / 2f
+            val cx = (sx + ex) / 2 + dpf(40f) * (n - 1); val cy = minOf(sy, ey) - dpf(70f)   // arc up and over
+            coin.x = sx; coin.y = sy
+            android.animation.ValueAnimator.ofFloat(0f, 1f).apply {
+                duration = 750; startDelay = 110L * n
+                interpolator = android.view.animation.AccelerateDecelerateInterpolator()
+                addUpdateListener {
+                    val t = it.animatedValue as Float; val u = 1 - t
+                    coin.x = u * u * sx + 2 * u * t * cx + t * t * ex
+                    coin.y = u * u * sy + 2 * u * t * cy + t * t * ey
+                    coin.scaleX = 1f - 0.35f * t; coin.scaleY = coin.scaleX
+                    coin.rotation = 360f * t
+                }
+                addListener(object : android.animation.AnimatorListenerAdapter() {
+                    override fun onAnimationEnd(a: android.animation.Animator) {
+                        rootFrame.removeView(coin)
+                        if (n == coins - 1) countUp(kid, before, before + cents)
+                    }
+                })
+                start()
+            }
+        }
+    }
+
+    private fun countUp(kid: String, from: Int, to: Int) {
+        showEarned.remove(kid)
+        val t = totals[kid] ?: return
+        android.animation.ValueAnimator.ofInt(from, to).apply {
+            duration = 500
+            addUpdateListener { t.text = "\uD83D\uDCB0 " + Chores.money(it.animatedValue as Int) }
+            start()
+        }
+        t.animate().scaleX(1.35f).scaleY(1.35f).setDuration(160).withEndAction {
+            t.animate().scaleX(1f).scaleY(1f).setDuration(260).setInterpolator(android.view.animation.OvershootInterpolator(3f)).start()
+        }.start()
+        t.pivotX = 0f
     }
 
     private fun open(launch: Intent) {

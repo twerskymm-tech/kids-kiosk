@@ -145,7 +145,7 @@ object Remote {
             .put("chores_on", Chores.enabled(c))
             .put("photos", Slides.json(c))
             .put("chores", JSONArray().apply {
-                Chores.all(c).forEach { put(JSONObject().put("id", it.id).put("kid", it.kid).put("title", it.title).put("days", it.days)) }
+                Chores.all(c).forEach { put(JSONObject().put("id", it.id).put("kid", it.kid).put("title", it.title).put("days", it.days).put("cents", it.cents)) }
             })
         val lock = Locks.current(c)
         return JSONObject()
@@ -155,6 +155,7 @@ object Remote {
                 Kiosk.launchableApps(c).forEach { (pkg, label) -> put(JSONObject().put("pkg", pkg).put("label", label)) }
             })
             .put("done", JSONArray(Chores.done(c).toList()))
+            .put("earned", Chores.earnedAll(c))
             .put("lock", JSONObject().put("reason", lock.reason.name).put("until", lock.until))
             .put("call_app", Prefs.callApp(c))
     }
@@ -179,11 +180,13 @@ object Remote {
         }
         if (s.has("shab_on")) Prefs.setShabbosOn(c, s.optBoolean("shab_on"))
         if (s.has("paused_until")) Prefs.setPausedUntil(c, s.optLong("paused_until"))
+        // Payouts: amounts to take off what each kid is owed (each change arrives once)
+        s.optJSONObject("paid")?.let { j -> j.keys().forEach { k -> Chores.paid(c, k, j.optInt(k, 0)) } }
         if (s.has("chores_on")) Chores.setEnabled(c, s.optBoolean("chores_on"))
         s.optJSONArray("photos")?.let { Slides.set(c, it) }
         s.optJSONArray("chores")?.let { a ->
             Chores.setAll(c, (0 until a.length()).map { a.getJSONObject(it) }.map {
-                Chores.Chore(it.getLong("id"), it.optString("kid"), it.optString("title"), it.optInt("days", Chores.EVERY_DAY))
+                Chores.Chore(it.getLong("id"), it.optString("kid"), it.optString("title"), it.optInt("days", Chores.EVERY_DAY), it.optInt("cents", 0))
             }.filter { it.title.isNotBlank() && it.kid.isNotBlank() })
         }
         Kiosk.apply(c)

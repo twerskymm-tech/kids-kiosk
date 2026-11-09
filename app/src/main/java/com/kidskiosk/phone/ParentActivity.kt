@@ -376,7 +376,8 @@ class ParentActivity : AppCompatActivity() {
             choreList.addView(text(kid, 15f, ink, bold = true), lp(MATCH, WRAP).apply { topMargin = dp(10) })
             all.filter { it.kid == kid }.forEach { ch ->
                 val r = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-                r.addView(text("${ch.title}  (${Chores.daysText(ch.days)})", 15f, ink), lp(0, WRAP, 1f))
+                val price = if (ch.cents > 0) "  " + Chores.money(ch.cents) else ""
+                r.addView(text("${ch.title}$price  (${Chores.daysText(ch.days)})", 15f, ink), lp(0, WRAP, 1f))
                 r.addView(button("Remove") { Chores.remove(this, ch.id); showChores() }, lp(WRAP, dp(40)))
                 choreList.addView(r, lp(MATCH, WRAP).apply { topMargin = dp(4) })
             }
@@ -389,6 +390,8 @@ class ParentActivity : AppCompatActivity() {
         val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(24), dp(8), dp(24), 0) }
         val title = field("", "Chore, e.g. Make your bed")
         box.addView(title)
+        val price = field("", "Pays (optional), e.g. 0.50", InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL)
+        box.addView(price)
         box.addView(text("For", 14f, muted, bold = true), lp(MATCH, WRAP).apply { topMargin = dp(10) })
         val kidChecks = kids.map { k -> CheckBox(this).apply { text = k; isChecked = true }.also { box.addView(it) } }
         box.addView(text("Days", 14f, muted, bold = true), lp(MATCH, WRAP).apply { topMargin = dp(10) })
@@ -405,7 +408,8 @@ class ParentActivity : AppCompatActivity() {
                 dayChecks.forEachIndexed { i, cb -> if (cb.isChecked) days = days or (1 shl i) }
                 val who = kids.filterIndexed { i, _ -> kidChecks[i].isChecked }
                 if (t.isEmpty() || days == 0 || who.isEmpty()) { toast("Type a chore, and pick at least one kid and one day"); return@setPositiveButton }
-                who.forEach { Chores.add(this, it, t, days) }
+                val cents = ((price.text.toString().replace("$", "").trim().toDoubleOrNull() ?: 0.0) * 100).toInt().coerceIn(0, 100_000)
+                who.forEach { Chores.add(this, it, t, days, cents) }
                 showChores()
             }
             .setNegativeButton("Cancel", null)
