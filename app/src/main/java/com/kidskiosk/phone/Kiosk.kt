@@ -21,6 +21,7 @@ import android.provider.Settings
  */
 object Kiosk {
     const val VOICE = "com.google.android.apps.googlevoice"
+    const val SETTINGS = "com.android.settings"
 
     private val RESTRICTIONS = listOf(
         UserManager.DISALLOW_FACTORY_RESET,
@@ -58,7 +59,8 @@ object Kiosk {
     fun apply(c: Context) {
         if (!isOwner(c)) return
         val d = dpm(c); val a = admin(c)
-        val pkgs = (allowedApps(c) + c.packageName + Prefs.callApp(c)).toTypedArray()
+        val bt = (c.applicationContext as? App)?.let { System.currentTimeMillis() < it.bluetoothUntil } == true
+        val pkgs = (allowedApps(c) + c.packageName + Prefs.callApp(c) + (if (bt) setOf(SETTINGS, "com.android.bluetooth") else emptySet())).toTypedArray()
         runCatching { d.setLockTaskPackages(a, pkgs) }
         // Home button works (comes back here). No notifications, no recent apps, no status bar info.
         // The power menu stays so the phone can be turned off.

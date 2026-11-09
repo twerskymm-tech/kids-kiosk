@@ -73,6 +73,7 @@ class HomeActivity : AppCompatActivity() {
         super.onResume()
         visible = true
         Prefs.setParentUntil(this, 0L)
+        (application as App).endBluetooth()
         Kiosk.apply(this)
         Kiosk.lock(this)
         loadPhoto()
@@ -156,38 +157,46 @@ class HomeActivity : AppCompatActivity() {
         return root
     }
 
+    /** One slim row: volume, brightness, Bluetooth. */
     private fun controls(): View {
         val box = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(16), dp(10), dp(16), dp(10))
-            background = rounded(0x55000000, dpf(20f))
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(12), dp(2), dp(6), dp(2))
+            background = rounded(0x55000000, dpf(24f))
         }
         val audio = getSystemService(Context.AUDIO_SERVICE) as AudioManager
         val maxVol = audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
-        box.addView(slider("Volume", maxVol, audio.getStreamVolume(AudioManager.STREAM_MUSIC)) { v ->
+        box.addView(text("\uD83D\uDD0A", 18f, Color.WHITE))
+        box.addView(seek(maxVol, audio.getStreamVolume(AudioManager.STREAM_MUSIC)) { v ->
             runCatching { audio.setStreamVolume(AudioManager.STREAM_MUSIC, v, 0) }
-        })
+        }, lp(0, dp(44), 1f))
+        box.addView(text("\u2600\uFE0F", 18f, Color.WHITE))
         val cur = runCatching { Settings.System.getInt(contentResolver, Settings.System.SCREEN_BRIGHTNESS) }.getOrDefault(128)
-        box.addView(slider("Brightness", 255, cur) { v ->
+        box.addView(seek(255, cur) { v ->
             if (!Kiosk.setBrightness(this, v)) {
                 window.attributes = window.attributes.apply { screenBrightness = v.coerceAtLeast(5) / 255f }
             }
-        })
+        }, lp(0, dp(44), 1f))
+        box.addView(Button(this).apply {
+            text = "Bluetooth"; isAllCaps = false; textSize = 13f
+            setTextColor(Color.WHITE)
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            background = rounded(0xFF2F6FED.toInt(), dpf(20f))
+            minHeight = 0; minimumHeight = 0; minWidth = 0; minimumWidth = 0
+            setPadding(dp(12), 0, dp(12), 0)
+            setOnClickListener { (application as App).openBluetooth() }
+        }, lp(WRAP, dp(38)).apply { marginStart = dp(4) })
         return box
     }
 
-    private fun slider(label: String, max: Int, value: Int, onChange: (Int) -> Unit): View {
-        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        row.addView(text(label, 15f, Color.WHITE, bold = true), lp(dp(100), WRAP))
-        row.addView(SeekBar(this).apply {
-            this.max = max; progress = value
-            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-                override fun onProgressChanged(s: SeekBar, p: Int, fromUser: Boolean) { if (fromUser) onChange(p) }
-                override fun onStartTrackingTouch(s: SeekBar) {}
-                override fun onStopTrackingTouch(s: SeekBar) {}
-            })
-        }, lp(0, dp(44), 1f))
-        return row
+    private fun seek(max: Int, value: Int, onChange: (Int) -> Unit) = SeekBar(this).apply {
+        this.max = max; progress = value
+        setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(s: SeekBar, p: Int, fromUser: Boolean) { if (fromUser) onChange(p) }
+            override fun onStartTrackingTouch(s: SeekBar) {}
+            override fun onStopTrackingTouch(s: SeekBar) {}
+        })
     }
 
     // ── Content ──
@@ -287,14 +296,14 @@ class HomeActivity : AppCompatActivity() {
         for (action in tries) {
             try {
                 startActivity(Intent(action, uri).setPackage(app).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                lastCallAt = System.currentTimeMillis()
+                lastCallAt = System.currentTimeMillis(); (application as App).watchCall()
                 return
             } catch (e: ActivityNotFoundException) { /* try the next way */ }
             catch (e: SecurityException) { /* try the next way */ }
         }
         // Last resort: just open Voice
         packageManager.getLaunchIntentForPackage(app)?.let {
-            lastCallAt = System.currentTimeMillis(); open(it)
+            lastCallAt = System.currentTimeMillis(); (application as App).watchCall(); open(it)
         } ?: toast("Couldn't start the call")
     }
 

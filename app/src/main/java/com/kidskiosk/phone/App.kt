@@ -53,6 +53,54 @@ class App : Application() {
         if (reason != Locks.Reason.NONE && !HomeActivity.visible && !inCall) bringHome()
     }
 
+    // ── After a call: back to the home screen ──
+    private var sawCall = false
+    private val callWatch = object : Runnable {
+        override fun run() {
+            val started = HomeActivity.lastCallAt
+            val now = System.currentTimeMillis()
+            if (started == 0L || HomeActivity.visible || now - started > 90 * 60_000L) { sawCall = false; return }
+            val audio = getSystemService(AUDIO_SERVICE) as android.media.AudioManager
+            val inCall = audio.mode == android.media.AudioManager.MODE_IN_COMMUNICATION || audio.mode == android.media.AudioManager.MODE_IN_CALL
+            when {
+                inCall -> sawCall = true
+                sawCall -> { endCall(); return }                          // call just ended
+                now - started > 90_000L -> { endCall(); return }          // never got through
+            }
+            handler.postDelayed(this, 1500L)
+        }
+    }
+
+    fun watchCall() { sawCall = false; handler.removeCallbacks(callWatch); handler.postDelayed(callWatch, 3000L) }
+
+    private fun endCall() { sawCall = false; HomeActivity.lastCallAt = 0L; bringHome() }
+
+    // ── Bluetooth: the kids may use the Bluetooth page for 3 minutes ──
+    @Volatile var bluetoothUntil = 0L
+    private val btWatch = object : Runnable {
+        override fun run() {
+            if (bluetoothUntil == 0L) return
+            if (System.currentTimeMillis() >= bluetoothUntil) { endBluetooth(); bringHome(); return }
+            handler.postDelayed(this, 2000L)
+        }
+    }
+
+    fun openBluetooth() {
+        bluetoothUntil = System.currentTimeMillis() + 3 * 60_000L
+        Kiosk.apply(this)
+        try {
+            startActivity(Intent(android.provider.Settings.ACTION_BLUETOOTH_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        } catch (e: Exception) { bluetoothUntil = 0L; Kiosk.apply(this); return }
+        handler.removeCallbacks(btWatch); handler.postDelayed(btWatch, 2000L)
+    }
+
+    fun endBluetooth() {
+        if (bluetoothUntil == 0L) return
+        bluetoothUntil = 0L
+        handler.removeCallbacks(btWatch)
+        Kiosk.apply(this)
+    }
+
     private fun bringHome() {
         runCatching {
             startActivity(Intent(this, HomeActivity::class.java)
