@@ -60,8 +60,11 @@ object Kiosk {
         if (!isOwner(c)) return
         val d = dpm(c); val a = admin(c)
         val bt = (c.applicationContext as? App)?.let { System.currentTimeMillis() < it.bluetoothUntil } == true
-        val pkgs = (allowedApps(c) + c.packageName + Prefs.callApp(c) + (if (bt) setOf(SETTINGS, "com.android.bluetooth") else emptySet())).toTypedArray()
+        val calling = callingAllowed(c)
+        val pkgs = (allowedApps(c) + c.packageName + (if (calling) setOf(Prefs.callApp(c)) else emptySet()) +
+            (if (bt) setOf(SETTINGS, "com.android.bluetooth") else emptySet())).toTypedArray()
         runCatching { d.setLockTaskPackages(a, pkgs) }
+        holdCallApp(c, !calling)
         // Home button works (comes back here). No notifications, no recent apps, no status bar info.
         // The power menu stays so the phone can be turned off.
         if (Build.VERSION.SDK_INT >= 28) runCatching {
@@ -80,6 +83,29 @@ object Kiosk {
         // No lock screen swipe for the kids; Android updates only at night (1–5 AM)
         runCatching { d.setKeyguardDisabled(a, true) }
         runCatching { d.setSystemUpdatePolicy(a, SystemUpdatePolicy.createWindowedInstallPolicy(60, 300)) }
+    }
+
+    /**
+     * No incoming calls: the calling app is switched off (suspended) and kept out of the kiosk except
+     * while a kid is placing a call from the home screen, or while parent mode is open.
+     */
+    fun callingAllowed(c: Context): Boolean {
+        val now = System.currentTimeMillis()
+        val started = HomeActivity.lastCallAt
+        return now < Prefs.parentUntil(c) || (started != 0L && now - started < 90 * 60_000L)
+    }
+
+    private fun holdCallApp(c: Context, hold: Boolean) {
+        if (!isOwner(c) || Build.VERSION.SDK_INT < 24) return
+        val d = dpm(c); val a = admin(c)
+        val sp = c.getSharedPreferences("kiosk", Context.MODE_PRIVATE)
+        val pkg = Prefs.callApp(c)
+        // If the parent picked a different calling app, switch the old one back on.
+        val old = sp.getString("held_pkg", "") ?: ""
+        if (old.isNotEmpty() && old != pkg) runCatching { d.setPackagesSuspended(a, arrayOf(old), false) }
+        if (!isInstalled(c, pkg)) return
+        runCatching { d.setPackagesSuspended(a, arrayOf(pkg), hold) }
+        sp.edit().putString("held_pkg", if (hold) pkg else "").apply()
     }
 
     /** Brightness 0–255 (owner can change it without asking). */
@@ -108,6 +134,7 @@ object Kiosk {
         runCatching { d.clearPackagePersistentPreferredActivities(ad, a.packageName) }
         runCatching { d.setKeyguardDisabled(ad, false) }
         runCatching { d.setLockTaskPackages(ad, arrayOf()) }
+        if (Build.VERSION.SDK_INT >= 24) runCatching { d.setPackagesSuspended(ad, arrayOf(Prefs.callApp(a)), false) }
         @Suppress("DEPRECATION")
         runCatching { d.clearDeviceOwnerApp(a.packageName) }
     }

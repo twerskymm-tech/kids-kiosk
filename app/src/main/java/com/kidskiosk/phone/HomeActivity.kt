@@ -403,20 +403,23 @@ class HomeActivity : AppCompatActivity() {
     private fun call(number: String) {
         val app = Prefs.callApp(this)
         if (!Kiosk.isInstalled(this, app)) { toast("The calling app isn't installed yet. Ask a parent."); return }
+        // Switch the calling app on just for this call (it stays off the rest of the time, so no calls come in).
+        lastCallAt = System.currentTimeMillis()
+        Kiosk.apply(this)
         val uri = Uri.parse("tel:" + Uri.encode(number))
         val tries = listOf(Intent.ACTION_CALL, Intent.ACTION_DIAL, Intent.ACTION_VIEW)
         for (action in tries) {
             try {
                 startActivity(Intent(action, uri).setPackage(app).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                lastCallAt = System.currentTimeMillis(); (application as App).watchCall()
+                (application as App).watchCall()
                 return
             } catch (e: ActivityNotFoundException) { /* try the next way */ }
             catch (e: SecurityException) { /* try the next way */ }
         }
-        // Last resort: just open Voice
+        // Last resort: just open the calling app
         packageManager.getLaunchIntentForPackage(app)?.let {
-            lastCallAt = System.currentTimeMillis(); (application as App).watchCall(); open(it)
-        } ?: toast("Couldn't start the call")
+            (application as App).watchCall(); open(it)
+        } ?: run { lastCallAt = 0L; Kiosk.apply(this); toast("Couldn't start the call") }
     }
 
     // ── Locks ──

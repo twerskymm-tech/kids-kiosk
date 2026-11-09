@@ -99,6 +99,7 @@ class ParentActivity : AppCompatActivity() {
         super.onResume()
         keepOpen()
         Kiosk.unlock(this)
+        Kiosk.apply(this)   // calling app usable while parent mode is open (to set it up)
         refreshPreview()
         uiHandler.removeCallbacks(remoteTick); uiHandler.post(remoteTick)
     }

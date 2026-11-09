@@ -60,9 +60,15 @@ class App : Application() {
         override fun run() {
             val started = HomeActivity.lastCallAt
             val now = System.currentTimeMillis()
-            if (started == 0L || HomeActivity.visible || now - started > 90 * 60_000L) { sawCall = false; return }
+            if (started == 0L) { sawCall = false; return }
             val audio = getSystemService(AUDIO_SERVICE) as android.media.AudioManager
             val inCall = audio.mode == android.media.AudioManager.MODE_IN_COMMUNICATION || audio.mode == android.media.AudioManager.MODE_IN_CALL
+            if (now - started > 90 * 60_000L || (HomeActivity.visible && !inCall && now - started > 10_000L)) {
+                // Back on the home screen with no call going: switch the calling app off again.
+                sawCall = false; HomeActivity.lastCallAt = 0L
+                speaker(audio, false); Kiosk.apply(this@App)
+                return
+            }
             when {
                 inCall -> {
                     if (!sawCall) speakerSince = now
@@ -83,6 +89,7 @@ class App : Application() {
 
     private fun endCall() {
         sawCall = false; HomeActivity.lastCallAt = 0L
+        Kiosk.apply(this)   // calling app off again: no incoming calls
         speaker(getSystemService(AUDIO_SERVICE) as android.media.AudioManager, false)
         bringHome()
     }
