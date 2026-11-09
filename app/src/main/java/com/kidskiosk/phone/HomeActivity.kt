@@ -14,7 +14,6 @@ import android.os.Looper
 import android.provider.Settings
 import android.view.Gravity
 import android.view.View
-import android.view.WindowManager
 import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.GridLayout
@@ -62,7 +61,6 @@ class HomeActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        window.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BARS_BACKGROUNDS)
         window.statusBarColor = Color.BLACK
         window.navigationBarColor = Color.BLACK
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
