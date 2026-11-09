@@ -54,6 +54,24 @@ jobs:
       - name: Name the file
         run: cp app/build/outputs/apk/release/app-release.apk kids-home.apk
 
+      # Setup QR for a factory-reset phone: tap 6 times on the welcome screen and scan it.
+      # The phone downloads the app from this repo's latest release (needs the repo to be public).
+      - name: Setup QR
+        run: |
+          SUM=$(keytool -exportcert -alias kiosk -keystore "$KIOSK_KEYSTORE" -storepass "$KIOSK_KEYSTORE_PASSWORD" | openssl dgst -sha256 -binary | base64 | tr '+/' '-_' | tr -d '=')
+          cat > provision.json <<JSON
+          {
+            "android.app.extra.PROVISIONING_DEVICE_ADMIN_COMPONENT_NAME": "com.kidskiosk.phone/com.kidskiosk.phone.AdminReceiver",
+            "android.app.extra.PROVISIONING_DEVICE_ADMIN_PACKAGE_DOWNLOAD_LOCATION": "https://github.com/${{ github.repository }}/releases/download/latest/kids-home.apk",
+            "android.app.extra.PROVISIONING_DEVICE_ADMIN_SIGNATURE_CHECKSUM": "$SUM",
+            "android.app.extra.PROVISIONING_LEAVE_ALL_SYSTEM_APPS_ENABLED": true,
+            "android.app.extra.PROVISIONING_SKIP_ENCRYPTION": true
+          }
+          JSON
+          python3 -m json.tool provision.json > /dev/null
+          pip install --quiet "qrcode[pil]"
+          python3 -c "import qrcode,json; qrcode.make(json.dumps(json.load(open('provision.json')),separators=(',',':')), box_size=8, border=4).save('phone-setup-qr.png')"
+
       - uses: actions/upload-artifact@v5
         with:
           name: kids-home
@@ -66,7 +84,7 @@ jobs:
         run: |
           VERSION="1.0.${{ github.run_number }}"
           gh release delete latest --yes --cleanup-tag || true
-          gh release create latest kids-home.apk \
+          gh release create latest kids-home.apk phone-setup-qr.png provision.json \
             --title "Kids Home $VERSION" \
             --notes "Download kids-home.apk below, then follow the setup guide in the README." \
             --latest

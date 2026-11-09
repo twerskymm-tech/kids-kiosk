@@ -119,6 +119,27 @@ class AdminReceiver : DeviceAdminReceiver() {
     override fun onEnabled(context: Context, intent: Intent) {
         Kiosk.apply(context)
     }
+
+    override fun onProfileProvisioningComplete(context: Context, intent: Intent) {
+        Kiosk.apply(context)
+        runCatching {
+            context.startActivity(Intent(context, HomeActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        }
+    }
+}
+
+/** Setup-QR steps Android 12+ asks the owner app: "fully managed phone", then "done". */
+class ProvisionActivity : Activity() {
+    override fun onCreate(savedInstanceState: android.os.Bundle?) {
+        super.onCreate(savedInstanceState)
+        when (intent?.action) {
+            DevicePolicyManager.ACTION_GET_PROVISIONING_MODE -> setResult(RESULT_OK,
+                Intent().putExtra(DevicePolicyManager.EXTRA_PROVISIONING_MODE, DevicePolicyManager.PROVISIONING_MODE_FULLY_MANAGED_DEVICE))
+            DevicePolicyManager.ACTION_ADMIN_POLICY_COMPLIANCE -> { Kiosk.apply(this); setResult(RESULT_OK) }
+            else -> setResult(RESULT_CANCELED)
+        }
+        finish()
+    }
 }
 
 /** After the app is updated, open the kids' screen again. */
