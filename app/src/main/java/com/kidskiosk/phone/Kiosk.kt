@@ -112,6 +112,14 @@ object Kiosk {
         runCatching { d.clearDeviceOwnerApp(a.packageName) }
     }
 
+    /** Signs a kid out of an app by wiping its data (owner only), then calls done(true/false) on the main thread. */
+    fun clearAppData(c: Context, pkg: String, done: (Boolean) -> Unit) {
+        if (!isOwner(c) || Build.VERSION.SDK_INT < 28) { done(false); return }
+        try {
+            dpm(c).clearApplicationUserData(admin(c), pkg, c.mainExecutor) { _, ok -> done(ok) }
+        } catch (e: Exception) { done(false) }
+    }
+
     fun appLabel(c: Context, pkg: String): String = runCatching {
         c.packageManager.getApplicationLabel(c.packageManager.getApplicationInfo(pkg, 0)).toString()
     }.getOrDefault(if (pkg == VOICE) "Google Voice" else pkg)

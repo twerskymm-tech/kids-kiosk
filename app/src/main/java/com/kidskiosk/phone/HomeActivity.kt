@@ -259,15 +259,36 @@ class HomeActivity : AppCompatActivity() {
             val label = runCatching { pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString() }.getOrDefault(pkg)
             Triple(pkg, label, launch)
         }.sortedBy { it.second.lowercase() }
-        apps.forEachIndexed { i, (pkg, label, launch) ->
+        // Greenlight shared by several kids: one tile per kid
+        val glKids = Prefs.greenlightKids(this)
+        data class T(val pkg: String, val label: String, val launch: Intent, val kid: String?)
+        val tiles = apps.flatMap { (pkg, label, launch) ->
+            if (glKids.size >= 2 && label.lowercase().contains("greenlight")) glKids.map { T(pkg, "$it's $label", launch, it) }
+            else listOf(T(pkg, label, launch, null))
+        }
+        tiles.forEachIndexed { i, t ->
             val tile = Tile(this).apply {
                 tileColor = TILE_COLORS[i % TILE_COLORS.size]
                 elevation = dpf(6f)
-                icon.setImageDrawable(runCatching { pm.getApplicationIcon(pkg) }.getOrNull())
-                this.label.text = label
-                setOnClickListener { open(launch) }
+                icon.setImageDrawable(runCatching { pm.getApplicationIcon(t.pkg) }.getOrNull())
+                this.label.text = t.label
+                setOnClickListener { if (t.kid == null) open(t.launch) else openAs(t.pkg, t.launch, t.kid) }
             }
             grid.addView(tile)
+        }
+    }
+
+    /**
+     * Opens Greenlight for one kid. If the other kid used it last, Greenlight is signed out first
+     * (its data wiped) so it opens on the login screen, where the saved password fills in with one tap.
+     */
+    private fun openAs(pkg: String, launch: Intent, kid: String) {
+        if (Prefs.greenlightLast(this) == kid) { open(launch); return }
+        toast("Switching to $kid...")
+        Kiosk.clearAppData(this, pkg) { ok ->
+            if (ok) Prefs.setGreenlightLast(this, kid)
+            toast(if (ok) "Log in as $kid" else "Log out of Greenlight, then log in as $kid")
+            open(launch)
         }
     }
 

@@ -44,6 +44,7 @@ class ParentActivity : AppCompatActivity() {
     private val checks = mutableMapOf<String, CheckBox>()
     private lateinit var callFields: List<Pair<EditText, EditText>>
     private lateinit var namesField: EditText
+    private lateinit var glKidsField: EditText
     private lateinit var latField: EditText
     private lateinit var lonField: EditText
     private lateinit var candleField: EditText
@@ -138,6 +139,14 @@ class ParentActivity : AppCompatActivity() {
             apps.addView(r, lp(MATCH, WRAP).apply { topMargin = dp(4) })
         }
 
+        apps.addView(text("Greenlight for each kid", 15f, ink, bold = true), lp(MATCH, WRAP).apply { topMargin = dp(14) })
+        apps.addView(text("Type the kids' names, separated by commas (e.g. Rivky, Chaya). Each gets her own Greenlight tile. Switching kids signs Greenlight out, and the saved password fills in on the login screen.", 13f, muted))
+        glKidsField = field(Prefs.greenlightKids(this).joinToString(", "), "Names, e.g. Rivky, Chaya")
+        apps.addView(glKidsField)
+        apps.addView(button("Password autofill settings") {
+            open(Intent(Settings.ACTION_REQUEST_SET_AUTOFILL_SERVICE).setData(Uri.parse("package:com.google.android.gms")))
+        }, lp(MATCH, dp(48)).apply { topMargin = dp(6) })
+
         // Calls
         val calls = card("Call buttons", "The kids' screen shows a button for each number. Calls go over Wi-Fi through the calling app you choose below (Google Voice, Voiply, ...).")
         callFields = (0..1).map { i ->
@@ -231,6 +240,7 @@ class ParentActivity : AppCompatActivity() {
         Prefs.setAllowed(this, checks.filter { it.value.isChecked }.keys)
         callFields.forEachIndexed { i, (n, p) -> Prefs.setCall(this, i, n.text.toString().trim(), p.text.toString().trim()) }
         Prefs.setKidNames(this, namesField.text.toString().trim())
+        Prefs.setGreenlightKids(this, glKidsField.text.toString())
         val lat = latField.text.toString().trim().toDoubleOrNull()
         val lon = lonField.text.toString().trim().toDoubleOrNull()
         if (lat != null && lon != null && lat in -90.0..90.0 && lon in -180.0..180.0) Prefs.setPlace(this, lat, lon)

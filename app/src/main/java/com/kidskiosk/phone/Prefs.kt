@@ -41,6 +41,13 @@ object Prefs {
     fun callApp(c: Context) = p(c).getString("call_app", Kiosk.VOICE) ?: Kiosk.VOICE
     fun setCallApp(c: Context, pkg: String) { p(c).edit().putString("call_app", pkg).apply() }
 
+    /** Kids who each have their own Greenlight login on this phone (comma separated), and who used it last. */
+    fun greenlightKids(c: Context): List<String> =
+        (p(c).getString("gl_kids", "") ?: "").split(",").map { it.trim() }.filter { it.isNotEmpty() }
+    fun setGreenlightKids(c: Context, s: String) { p(c).edit().putString("gl_kids", s).apply() }
+    fun greenlightLast(c: Context) = p(c).getString("gl_last", "") ?: ""
+    fun setGreenlightLast(c: Context, s: String) { p(c).edit().putString("gl_last", s).apply() }
+
     // ── Bedtime (minutes after midnight) ──
     fun bedtimeOn(c: Context) = p(c).getBoolean("bed_on", true)
     fun bedStart(c: Context) = p(c).getInt("bed_start", 20 * 60)
