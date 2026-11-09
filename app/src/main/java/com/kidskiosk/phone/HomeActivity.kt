@@ -48,6 +48,7 @@ class HomeActivity : AppCompatActivity() {
     private lateinit var lockLayer: LinearLayout
     private lateinit var lockTitle: TextView
     private lateinit var lockSub: TextView
+    private lateinit var zmanim: LinearLayout
     private lateinit var setupNote: TextView
     private lateinit var callRow: LinearLayout
     private lateinit var lockCallRow: LinearLayout
@@ -142,10 +143,22 @@ class HomeActivity : AppCompatActivity() {
             isClickable = true
             visibility = View.GONE
         }
-        lockTitle = text("", 40f, Color.WHITE, bold = true, gravity = Gravity.CENTER)
+        lockLayer.addView(TextClock(this).apply {
+            textSize = 84f; setTextColor(Color.WHITE); gravity = Gravity.CENTER
+            format12Hour = "h:mm"; format24Hour = "H:mm"
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+        }, lp(MATCH, WRAP))
+        lockTitle = text("", 32f, Color.WHITE, bold = true, gravity = Gravity.CENTER)
         lockSub = text("", 18f, 0xDDFFFFFF.toInt(), gravity = Gravity.CENTER)
-        lockLayer.addView(lockTitle)
-        lockLayer.addView(lockSub, lp(MATCH, WRAP).apply { topMargin = dp(12) })
+        lockLayer.addView(lockTitle, lp(MATCH, WRAP).apply { topMargin = dp(8) })
+        lockLayer.addView(lockSub, lp(MATCH, WRAP).apply { topMargin = dp(6) })
+        zmanim = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(14), dp(20), dp(14))
+            background = rounded(0x22FFFFFF, dpf(20f))
+            layoutDirection = View.LAYOUT_DIRECTION_RTL
+        }
+        lockLayer.addView(zmanim, lp(MATCH, WRAP).apply { topMargin = dp(24) })
         lockCallRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         lockLayer.addView(lockCallRow, lp(MATCH, WRAP).apply { topMargin = dp(48) })
         root.addView(lockLayer, FrameLayout.LayoutParams(MATCH, MATCH))
@@ -316,16 +329,41 @@ class HomeActivity : AppCompatActivity() {
             greeting.text = greetingText()
             return
         }
-        lockTitle.text = when (s.reason) {
-            Locks.Reason.BEDTIME -> "Good night"
-            Locks.Reason.SHABBOS -> "Good Shabbos"
-            else -> "Good Yom Tov"
-        }
-        lockSub.text = when (s.reason) {
-            Locks.Reason.BEDTIME -> "The phone opens again at ${timeText(this, s.until)}."
-            else -> "The phone opens again after Havdalah, ${dayTimeText(this, s.until)}."
+        zmanim.removeAllViews()
+        if (s.reason == Locks.Reason.BEDTIME) {
+            lockTitle.text = "Good night"
+            lockSub.text = "The phone opens again at ${timeText(this, s.until)}."
+            zmanim.visibility = View.GONE
+        } else {
+            val pl = Locks.place(this)
+            val now = java.util.Date()
+            val w = pl?.let { runCatching { Shabbos.now(now, it) }.getOrNull() }
+            val info = if (pl != null && w != null) runCatching { Shabbos.info(w, now, pl) }.getOrNull() else null
+            if (info == null) {
+                lockTitle.text = if (s.reason == Locks.Reason.YOMTOV) "גוט יום טוב" else "גוט שבת"
+                lockSub.text = ""
+                zmanim.visibility = View.GONE
+            } else {
+                lockTitle.text = info.title
+                lockSub.text = info.hebrewDate
+                val end = if (s.reason == Locks.Reason.YOMTOV) "צאת החג" else "צאת השבת"
+                listOf("הדלקת נרות" to info.candle, "סוף זמן קריאת שמע" to info.shma, "שקיעה" to info.sunset, end to info.havdalah)
+                    .forEach { (label, d) -> if (d != null) zmanim.addView(zmanRow(label, d.time)) }
+                zmanim.visibility = View.VISIBLE
+            }
         }
         lockLayer.visibility = View.VISIBLE; main.visibility = View.INVISIBLE
+    }
+
+    private fun zmanRow(label: String, ms: Long): View {
+        val r = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            layoutDirection = View.LAYOUT_DIRECTION_RTL
+            setPadding(0, dp(6), 0, dp(6))
+        }
+        r.addView(text(label, 20f, Color.WHITE, bold = true), lp(0, WRAP, 1f))
+        r.addView(text(timeText(this, ms), 20f, 0xFFFFE08A.toInt(), bold = true))
+        return r
     }
 
     // ── Parent ──

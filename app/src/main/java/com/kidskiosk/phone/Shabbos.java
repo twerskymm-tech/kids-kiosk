@@ -1,6 +1,7 @@
 package com.kidskiosk.phone;
 
 import com.kosherjava.zmanim.ComplexZmanimCalendar;
+import com.kosherjava.zmanim.hebrewcalendar.HebrewDateFormatter;
 import com.kosherjava.zmanim.hebrewcalendar.JewishCalendar;
 import com.kosherjava.zmanim.util.GeoLocation;
 
@@ -85,5 +86,44 @@ public final class Shabbos {
     public static Window now(Date now, Place p) {
         Window w = currentOrNext(now, p);
         return (w != null && !w.start.after(now)) ? w : null;
+    }
+
+    /** What the Shabbos / Yom Tov screen shows (Hebrew). */
+    public static final class Info {
+        public String title;       // e.g. "שבת קודש פרשת תולדות" or "ראש השנה"
+        public String hebrewDate;  // e.g. "ב׳ כסלו תשפ״ז"
+        public Date candle, shma, sunset, havdalah;
+    }
+
+    public static Info info(Window w, Date now, Place p) {
+        LocalDate today = now.toInstant().atZone(ZoneId.of(p.tz.getID())).toLocalDate();
+        LocalDate day = today;
+        Date sunsetToday = zc(today, p).getSeaLevelSunset();
+        if (!assur(today, p) || (sunsetToday != null && now.after(sunsetToday) && assur(today.plusDays(1), p))) day = today.plusDays(1);
+        JewishCalendar j = jc(day, p);
+        HebrewDateFormatter f = new HebrewDateFormatter();
+        f.setHebrewFormat(true);
+        Info i = new Info();
+        boolean shabbos = day.getDayOfWeek() == java.time.DayOfWeek.SATURDAY;
+        StringBuilder t = new StringBuilder();
+        if (j.isYomTovAssurBemelacha()) {
+            if (shabbos) t.append("שבת ");
+            t.append(f.formatYomTov(j));
+        } else {
+            t.append("שבת קודש");
+            String parsha = f.formatParsha(j);
+            if (parsha != null && !parsha.isEmpty()) t.append(" פרשת ").append(parsha);
+            else { String yt = f.formatYomTov(j); if (yt != null && !yt.isEmpty()) t.append(" ").append(yt); }
+            String special = f.formatSpecialParsha(j);
+            if (special != null && !special.isEmpty()) t.append(" · ").append(special);
+        }
+        i.title = t.toString();
+        i.hebrewDate = f.format(j);
+        ComplexZmanimCalendar z = zc(day, p);
+        i.candle = w.start;
+        i.shma = z.getSofZmanShmaGRA();
+        i.sunset = z.getSeaLevelSunset();
+        i.havdalah = w.end;
+        return i;
     }
 }
