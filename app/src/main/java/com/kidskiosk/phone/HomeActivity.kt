@@ -16,10 +16,8 @@ import android.view.Gravity
 import android.view.View
 import android.widget.Button
 import android.widget.FrameLayout
-import android.widget.GridLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
-import android.widget.ScrollView
 import android.widget.SeekBar
 import android.widget.TextClock
 import android.widget.TextView
@@ -43,7 +41,8 @@ class HomeActivity : AppCompatActivity() {
     private val handler = Handler(Looper.getMainLooper())
     private lateinit var bg: ImageView
     private lateinit var greeting: TextView
-    private lateinit var grid: GridLayout
+    private lateinit var grid: TileGrid
+    private lateinit var greetingNames: TextView
     private lateinit var main: View
     private lateinit var lockLayer: LinearLayout
     private lateinit var lockFrame: FrameLayout
@@ -110,23 +109,25 @@ class HomeActivity : AppCompatActivity() {
 
         val col = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(20), dp(28), dp(20), dp(16))
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(dp(20), dp(24), dp(20), dp(16))
         }
-        greeting = text("", 26f, Color.WHITE, bold = true)
-        col.addView(greeting)
+        greeting = text("", 22f, 0xEEFFFFFF.toInt(), bold = true, gravity = Gravity.CENTER)
+        greetingNames = text("", 26f, Color.WHITE, bold = true, gravity = Gravity.CENTER)
+        col.addView(greeting, lp(MATCH, WRAP))
+        col.addView(greetingNames, lp(MATCH, WRAP))
         col.addView(TextClock(this).apply {
-            textSize = 64f; setTextColor(Color.WHITE)
+            textSize = 72f; setTextColor(Color.WHITE); gravity = Gravity.CENTER
             format12Hour = "h:mm"; format24Hour = "H:mm"
             setTypeface(typeface, android.graphics.Typeface.BOLD)
-        })
+        }, lp(MATCH, WRAP).apply { topMargin = dp(4) })
         col.addView(TextClock(this).apply {
-            textSize = 18f; setTextColor(0xDDFFFFFF.toInt())
+            textSize = 18f; setTextColor(0xDDFFFFFF.toInt()); gravity = Gravity.CENTER
             format12Hour = "EEEE, MMMM d"; format24Hour = "EEEE, MMMM d"
-        })
+        }, lp(MATCH, WRAP))
 
-        grid = GridLayout(this).apply { columnCount = 2; useDefaultMargins = false }
-        val scroll = ScrollView(this).apply { isFillViewport = true; addView(grid, FrameLayout.LayoutParams(MATCH, WRAP)) }
-        col.addView(scroll, lp(MATCH, 0, 1f).apply { topMargin = dp(20) })
+        grid = TileGrid(this)
+        col.addView(grid, lp(MATCH, 0, 1f).apply { topMargin = dp(16) })
 
         callRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         col.addView(callRow, lp(MATCH, WRAP).apply { topMargin = dp(12) })
@@ -228,7 +229,9 @@ class HomeActivity : AppCompatActivity() {
         val h = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
         val part = when (h) { in 4..11 -> "Good morning"; in 12..16 -> "Good afternoon"; else -> "Good evening" }
         val names = Prefs.kidNames(this).trim()
-        return if (names.isEmpty()) "$part!" else "$part, $names!"
+        greetingNames.text = names
+        greetingNames.visibility = if (names.isEmpty()) View.GONE else View.VISIBLE
+        return if (names.isEmpty()) "$part!" else part
     }
 
     private fun loadPhoto() {
@@ -256,32 +259,15 @@ class HomeActivity : AppCompatActivity() {
             val label = runCatching { pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString() }.getOrDefault(pkg)
             Triple(pkg, label, launch)
         }.sortedBy { it.second.lowercase() }
-        if (apps.isEmpty()) {
-            grid.addView(text("No apps yet. A parent can add them in parent mode.", 18f, Color.WHITE, gravity = Gravity.CENTER),
-                GridLayout.LayoutParams(GridLayout.spec(0), GridLayout.spec(0, 2, 1f)).apply { width = 0 })
-            return
-        }
         apps.forEachIndexed { i, (pkg, label, launch) ->
-            val tile = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                gravity = Gravity.CENTER
-                setPadding(dp(8), dp(16), dp(8), dp(16))
-                background = rounded(TILE_COLORS[i % TILE_COLORS.size], dpf(28f))
+            val tile = Tile(this).apply {
+                tileColor = TILE_COLORS[i % TILE_COLORS.size]
                 elevation = dpf(6f)
+                icon.setImageDrawable(runCatching { pm.getApplicationIcon(pkg) }.getOrNull())
+                this.label.text = label
                 setOnClickListener { open(launch) }
             }
-            tile.addView(ImageView(this).apply {
-                setImageDrawable(runCatching { pm.getApplicationIcon(pkg) }.getOrNull())
-                background = rounded(Color.WHITE, dpf(22f))
-                setPadding(dp(8), dp(8), dp(8), dp(8))
-            }, lp(dp(84), dp(84)))
-            tile.addView(text(label, 20f, Color.WHITE, bold = true, gravity = Gravity.CENTER).apply { maxLines = 2 },
-                lp(MATCH, WRAP).apply { topMargin = dp(10) })
-            val glp = GridLayout.LayoutParams(GridLayout.spec(i / 2), GridLayout.spec(i % 2, 1f)).apply {
-                width = 0; height = dp(178)
-                setMargins(dp(8), dp(8), dp(8), dp(8))
-            }
-            grid.addView(tile, glp)
+            grid.addView(tile)
         }
     }
 
