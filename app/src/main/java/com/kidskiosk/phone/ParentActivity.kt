@@ -49,6 +49,7 @@ class ParentActivity : AppCompatActivity() {
     private lateinit var candleField: EditText
     private lateinit var havdalahField: EditText
     private lateinit var shabbosPreview: TextView
+    private lateinit var callAppText: TextView
     private lateinit var pauseStatus: TextView
     private lateinit var bedStartBtn: Button
     private lateinit var bedEndBtn: Button
@@ -129,7 +130,7 @@ class ParentActivity : AppCompatActivity() {
         }
 
         // Calls
-        val calls = card("Call buttons", "The kids' screen shows a button for each number. Calls go over Wi-Fi through Google Voice.")
+        val calls = card("Call buttons", "The kids' screen shows a button for each number. Calls go over Wi-Fi through the calling app you choose below (Google Voice, Voiply, ...).")
         callFields = (0..1).map { i ->
             val name = field(Prefs.callName(this, i), "Button name (e.g. Mommy)")
             val num = field(Prefs.callNumber(this, i), "Phone number", InputType.TYPE_CLASS_PHONE)
@@ -137,12 +138,13 @@ class ParentActivity : AppCompatActivity() {
             calls.addView(name); calls.addView(num)
             name to num
         }
-        val voiceOk = Kiosk.isInstalled(this, Kiosk.VOICE)
-        calls.addView(text(if (voiceOk) "Google Voice is installed. Open it once and sign in so calls work." else "Google Voice is not installed yet: get it from the Play Store.", 14f, if (voiceOk) muted else 0xFFC0392B.toInt()),
-            lp(MATCH, WRAP).apply { topMargin = dp(10) })
-        calls.addView(button(if (voiceOk) "Open Google Voice" else "Get Google Voice") {
-            if (voiceOk) openPkg(Kiosk.VOICE) else open(Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=${Kiosk.VOICE}")))
-        }, lp(MATCH, dp(52)).apply { topMargin = dp(6) })
+        callAppText = text("", 14f, muted)
+        calls.addView(callAppText, lp(MATCH, WRAP).apply { topMargin = dp(10) })
+        val car = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        car.addView(button("Choose calling app") { pickCallApp() }, lp(0, dp(52), 1f).apply { marginEnd = dp(6) })
+        car.addView(button("Open calling app") { openPkg(Prefs.callApp(this)) }, lp(0, dp(52), 1f).apply { marginStart = dp(6) })
+        calls.addView(car, lp(MATCH, WRAP).apply { topMargin = dp(6) })
+        showCallApp()
 
         // Bedtime
         val bed = card("Bedtime lock", "The phone locks every night between these times. Call buttons still work.")
@@ -198,6 +200,7 @@ class ParentActivity : AppCompatActivity() {
         // PIN and setup
         val sec = card("PIN and setup", if (Kiosk.isOwner(this)) "Full lock is on." else "Full lock is NOT on yet. Follow the setup guide (factory reset + one command from your PC).")
         sec.addView(button("Change PIN") { PinDialog.create(this) {} }, lp(MATCH, dp(52)).apply { topMargin = dp(6) })
+        sec.addView(button("Check for app update") { toast("Checking..."); Updater.check(this) { m -> toast(m) } }, lp(MATCH, dp(52)).apply { topMargin = dp(6) })
         if (Kiosk.isOwner(this)) sec.addView(button("Remove full lock (before uninstalling)") { confirmRemove() }, lp(MATCH, dp(52)).apply { topMargin = dp(6) })
         sec.addView(text("Version ${runCatching { packageManager.getPackageInfo(packageName, 0).versionName }.getOrDefault("")}", 12f, muted), lp(MATCH, WRAP).apply { topMargin = dp(8) })
     }
@@ -267,6 +270,25 @@ class ParentActivity : AppCompatActivity() {
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == 7 && grantResults.any { it == PackageManager.PERMISSION_GRANTED }) useLocation()
+    }
+
+    private fun showCallApp() {
+        val pkg = Prefs.callApp(this)
+        val ok = Kiosk.isInstalled(this, pkg)
+        callAppText.text = if (ok) "Calling app: ${Kiosk.appLabel(this, pkg)}. Open it once and sign in so calls work."
+            else "Calling app: ${Kiosk.appLabel(this, pkg)} is not installed. Install it from the Play Store, or choose another."
+        callAppText.setTextColor(if (ok) muted else 0xFFC0392B.toInt())
+    }
+
+    private fun pickCallApp() {
+        val apps = Kiosk.launchableApps(this)
+        AlertDialog.Builder(this)
+            .setTitle("Which app makes the calls?")
+            .setItems(apps.map { it.second }.toTypedArray()) { _, i ->
+                Prefs.setCallApp(this, apps[i].first); Kiosk.apply(this); showCallApp()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 
     private fun confirmRemove() {

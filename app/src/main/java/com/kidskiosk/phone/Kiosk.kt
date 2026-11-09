@@ -58,7 +58,7 @@ object Kiosk {
     fun apply(c: Context) {
         if (!isOwner(c)) return
         val d = dpm(c); val a = admin(c)
-        val pkgs = (allowedApps(c) + c.packageName + VOICE).toTypedArray()
+        val pkgs = (allowedApps(c) + c.packageName + Prefs.callApp(c)).toTypedArray()
         runCatching { d.setLockTaskPackages(a, pkgs) }
         // Home button works (comes back here). No notifications, no recent apps, no status bar info.
         // The power menu stays so the phone can be turned off.
@@ -109,6 +109,10 @@ object Kiosk {
         @Suppress("DEPRECATION")
         runCatching { d.clearDeviceOwnerApp(a.packageName) }
     }
+
+    fun appLabel(c: Context, pkg: String): String = runCatching {
+        c.packageManager.getApplicationLabel(c.packageManager.getApplicationInfo(pkg, 0)).toString()
+    }.getOrDefault(if (pkg == VOICE) "Google Voice" else pkg)
 
     fun isInstalled(c: Context, pkg: String): Boolean =
         runCatching { c.packageManager.getPackageInfo(pkg, 0); true }.getOrDefault(false)

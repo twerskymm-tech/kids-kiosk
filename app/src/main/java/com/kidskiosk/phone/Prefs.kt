@@ -37,6 +37,10 @@ object Prefs {
         p(c).edit().putString("call_name_$i", name).putString("call_number_$i", number).apply()
     }
 
+    /** Which app places the calls (Google Voice by default; Voiply or any calling app the parent picks). */
+    fun callApp(c: Context) = p(c).getString("call_app", Kiosk.VOICE) ?: Kiosk.VOICE
+    fun setCallApp(c: Context, pkg: String) { p(c).edit().putString("call_app", pkg).apply() }
+
     // ── Bedtime (minutes after midnight) ──
     fun bedtimeOn(c: Context) = p(c).getBoolean("bed_on", true)
     fun bedStart(c: Context) = p(c).getInt("bed_start", 20 * 60)

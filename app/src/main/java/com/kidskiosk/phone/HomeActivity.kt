@@ -82,6 +82,7 @@ class HomeActivity : AppCompatActivity() {
         setupNote.visibility = if (Kiosk.isOwner(this)) View.GONE else View.VISIBLE
         handler.removeCallbacks(refresh); handler.post(refresh)
         if (!Prefs.hasPin(this)) PinDialog.create(this) { openParent() }
+        Updater.autoCheck(this)
     }
 
     override fun onPause() {
@@ -277,21 +278,22 @@ class HomeActivity : AppCompatActivity() {
         row.visibility = if (row.childCount == 0) View.GONE else View.VISIBLE
     }
 
-    /** Calls over Wi-Fi through the Google Voice app. */
+    /** Calls over Wi-Fi through the calling app the parent picked (Google Voice, Voiply, ...). */
     private fun call(number: String) {
-        if (!Kiosk.isInstalled(this, Kiosk.VOICE)) { toast("Google Voice isn't installed yet. Ask a parent."); return }
+        val app = Prefs.callApp(this)
+        if (!Kiosk.isInstalled(this, app)) { toast("The calling app isn't installed yet. Ask a parent."); return }
         val uri = Uri.parse("tel:" + Uri.encode(number))
         val tries = listOf(Intent.ACTION_CALL, Intent.ACTION_DIAL, Intent.ACTION_VIEW)
         for (action in tries) {
             try {
-                startActivity(Intent(action, uri).setPackage(Kiosk.VOICE).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                startActivity(Intent(action, uri).setPackage(app).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                 lastCallAt = System.currentTimeMillis()
                 return
             } catch (e: ActivityNotFoundException) { /* try the next way */ }
             catch (e: SecurityException) { /* try the next way */ }
         }
         // Last resort: just open Voice
-        packageManager.getLaunchIntentForPackage(Kiosk.VOICE)?.let {
+        packageManager.getLaunchIntentForPackage(app)?.let {
             lastCallAt = System.currentTimeMillis(); open(it)
         } ?: toast("Couldn't start the call")
     }
