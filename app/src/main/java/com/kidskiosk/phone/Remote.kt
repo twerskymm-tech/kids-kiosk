@@ -53,6 +53,7 @@ object Remote {
     /** Called from the app's 20-second tick. */
     fun autoSync(c: Context) {
         if (!isOn(c)) return
+        Slides.ensure(c)
         val gap = if (isLinked(c)) EVERY_MS else PAIRING_EVERY_MS
         if (System.currentTimeMillis() - lastTry < gap) return
         syncNow(c, null)
@@ -142,6 +143,7 @@ object Remote {
             .put("shab_on", Prefs.shabbosOn(c))
             .put("paused_until", Prefs.pausedUntil(c))
             .put("chores_on", Chores.enabled(c))
+            .put("photos", Slides.json(c))
             .put("chores", JSONArray().apply {
                 Chores.all(c).forEach { put(JSONObject().put("id", it.id).put("kid", it.kid).put("title", it.title).put("days", it.days)) }
             })
@@ -178,6 +180,7 @@ object Remote {
         if (s.has("shab_on")) Prefs.setShabbosOn(c, s.optBoolean("shab_on"))
         if (s.has("paused_until")) Prefs.setPausedUntil(c, s.optLong("paused_until"))
         if (s.has("chores_on")) Chores.setEnabled(c, s.optBoolean("chores_on"))
+        s.optJSONArray("photos")?.let { Slides.set(c, it) }
         s.optJSONArray("chores")?.let { a ->
             Chores.setAll(c, (0 until a.length()).map { a.getJSONObject(it) }.map {
                 Chores.Chore(it.getLong("id"), it.optString("kid"), it.optString("title"), it.optInt("days", Chores.EVERY_DAY))

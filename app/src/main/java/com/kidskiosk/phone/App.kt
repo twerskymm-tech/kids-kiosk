@@ -64,7 +64,12 @@ class App : Application() {
             val audio = getSystemService(AUDIO_SERVICE) as android.media.AudioManager
             val inCall = audio.mode == android.media.AudioManager.MODE_IN_COMMUNICATION || audio.mode == android.media.AudioManager.MODE_IN_CALL
             when {
-                inCall -> sawCall = true
+                inCall -> {
+                    if (!sawCall) speakerSince = now
+                    sawCall = true
+                    // Calls go on speaker. The calling app may switch it back while connecting, so keep asking for a bit.
+                    if (now - speakerSince < 20_000L) speaker(audio, true)
+                }
                 sawCall -> { endCall(); return }                          // call just ended
                 now - started > 90_000L -> { endCall(); return }          // never got through
             }
@@ -74,7 +79,30 @@ class App : Application() {
 
     fun watchCall() { sawCall = false; handler.removeCallbacks(callWatch); handler.postDelayed(callWatch, 3000L) }
 
-    private fun endCall() { sawCall = false; HomeActivity.lastCallAt = 0L; bringHome() }
+    private var speakerSince = 0L
+
+    private fun endCall() {
+        sawCall = false; HomeActivity.lastCallAt = 0L
+        speaker(getSystemService(AUDIO_SERVICE) as android.media.AudioManager, false)
+        bringHome()
+    }
+
+    @Suppress("DEPRECATION")
+    private fun speaker(audio: android.media.AudioManager, on: Boolean) {
+        runCatching {
+            if (android.os.Build.VERSION.SDK_INT >= 31) {
+                if (on) {
+                    val cur = audio.communicationDevice
+                    if (cur?.type != android.media.AudioDeviceInfo.TYPE_BUILTIN_SPEAKER) {
+                        audio.availableCommunicationDevices
+                            .firstOrNull { it.type == android.media.AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }
+                            ?.let { audio.setCommunicationDevice(it) }
+                    }
+                } else audio.clearCommunicationDevice()
+            }
+            if (audio.isSpeakerphoneOn != on) audio.isSpeakerphoneOn = on
+        }
+    }
 
     // ── Bluetooth: the kids may use the Bluetooth page for 3 minutes ──
     @Volatile var bluetoothUntil = 0L

@@ -275,7 +275,7 @@ class HomeActivity : AppCompatActivity() {
             val launch = pm.getLaunchIntentForPackage(pkg) ?: return@mapNotNull null
             val label = runCatching { pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString() }.getOrDefault(pkg)
             Triple(pkg, label, launch)
-        }.sortedBy { it.second.lowercase() }
+        }.sortedWith(compareBy({ !it.second.lowercase().contains("greenlight") }, { it.second.lowercase() }))
         // Greenlight shared by several kids: one tile per kid
         val glKids = Prefs.greenlightKids(this)
         data class T(val pkg: String, val label: String, val launch: Intent, val kid: String?)
@@ -290,6 +290,23 @@ class HomeActivity : AppCompatActivity() {
                 icon.setImageDrawable(runCatching { pm.getApplicationIcon(t.pkg) }.getOrNull())
                 this.label.text = t.label
                 setOnClickListener { if (t.kid == null) open(t.launch) else openAs(t.pkg, t.launch, t.kid) }
+            }
+            grid.addView(tile)
+        }
+        // Family photos from the parent: a tile that opens the slideshow, showing the first photo
+        val photos = Slides.files(this)
+        if (photos.isNotEmpty()) {
+            val tile = Tile(this).apply {
+                tileColor = TILE_COLORS[tiles.size % TILE_COLORS.size]
+                elevation = dpf(6f)
+                Slides.decode(photos.first(), 300)?.let { bmp ->
+                    icon.setImageDrawable(androidx.core.graphics.drawable.RoundedBitmapDrawableFactory.create(resources, bmp).apply {
+                        cornerRadius = minOf(bmp.width, bmp.height) / 5f
+                    })
+                    icon.scaleType = ImageView.ScaleType.CENTER_CROP
+                }
+                this.label.text = "Photos"
+                setOnClickListener { open(Intent(this@HomeActivity, SlideshowActivity::class.java)) }
             }
             grid.addView(tile)
         }
@@ -309,37 +326,59 @@ class HomeActivity : AppCompatActivity() {
         }
     }
 
-    /** Chores board: one card per kid with today's chores; tap a chore to check it off. */
+    /**
+     * Chores board: one card per kid with all of today's chores. Tap a chore to check it off;
+     * tap it again to uncheck it (if it was ticked by mistake).
+     */
     private fun fillBoard() {
         board.removeAllViews()
         val kids = Chores.kids(this)
         if (!Chores.enabled(this) || kids.isEmpty() || Chores.all(this).isEmpty()) { board.visibility = View.GONE; return }
         board.visibility = View.VISIBLE
         val done = Chores.done(this)
+        val kidColors = intArrayOf(0xFFFF6B9A.toInt(), 0xFF4D96FF.toInt(), 0xFFFFB84C.toInt(), 0xFF6BCB77.toInt())
         kids.forEachIndexed { i, kid ->
+            val color = kidColors[i % kidColors.size]
             val card = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
-                setPadding(dp(12), dp(10), dp(12), dp(10))
-                background = rounded(0x66000000, dpf(18f))
+                setPadding(dp(10), dp(10), dp(10), dp(8))
+                background = rounded(0xE6FFFFFF.toInt(), dpf(18f))
+                elevation = dpf(4f)
             }
-            val list = Chores.today(this, kid).sortedBy { it.id in done }
+            val list = Chores.today(this, kid)
             val left = list.count { it.id !in done }
-            card.addView(text(if (left == 0) kid else "$kid · $left left", 16f, Color.WHITE, bold = true))
-            if (list.isEmpty() || left == 0) {
-                card.addView(text(if (list.isEmpty()) "No chores today" else "All done! \u2B50", 15f, 0xFFFFE08A.toInt(), bold = true),
-                    lp(MATCH, WRAP).apply { topMargin = dp(4) })
+            // Header: name on a colored strip, and how many are left
+            val head = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(10), dp(6), dp(10), dp(6))
+                background = rounded(color, dpf(12f))
             }
-            list.take(5).forEach { ch ->
+            head.addView(text(kid, 17f, Color.WHITE, bold = true).apply { maxLines = 1 }, lp(0, WRAP, 1f))
+            head.addView(text(when {
+                list.isEmpty() -> ""
+                left == 0 -> "\u2B50 Done!"
+                else -> "$left left"
+            }, 14f, Color.WHITE, bold = true))
+            card.addView(head, lp(MATCH, WRAP))
+            if (list.isEmpty()) card.addView(text("No chores today", 15f, 0xFF6B7080.toInt()), lp(MATCH, WRAP).apply { topMargin = dp(8); bottomMargin = dp(4) })
+            list.take(6).forEach { ch ->
                 val isDone = ch.id in done
-                if (left == 0) return@forEach
-                card.addView(text((if (isDone) "\u2714  " else "\u25CB  ") + ch.title, 15f, if (isDone) 0x99FFFFFF.toInt() else Color.WHITE).apply {
-                    if (isDone) paintFlags = paintFlags or android.graphics.Paint.STRIKE_THRU_TEXT_FLAG
-                    maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END
-                    setPadding(0, dp(5), 0, dp(5))
+                val row = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+                    setPadding(dp(4), dp(7), dp(4), dp(7))
                     setOnClickListener { Chores.toggle(this@HomeActivity, ch.id); fillBoard() }
-                })
+                }
+                val box = text(if (isDone) "\u2713" else "", 17f, Color.WHITE, bold = true, gravity = Gravity.CENTER).apply {
+                    background = if (isDone) rounded(0xFF22B573.toInt(), dpf(14f)) else rounded(Color.WHITE, dpf(14f), dp(2), 0xFFB8BCCB.toInt())
+                }
+                row.addView(box, lp(dp(28), dp(28)))
+                row.addView(text(ch.title, 16f, if (isDone) 0xFF9AA0AE.toInt() else 0xFF1F2333.toInt(), bold = !isDone).apply {
+                    if (isDone) paintFlags = paintFlags or android.graphics.Paint.STRIKE_THRU_TEXT_FLAG
+                    maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END
+                }, lp(0, WRAP, 1f).apply { marginStart = dp(10) })
+                card.addView(row, lp(MATCH, WRAP))
             }
-            if (list.size > 5 && left > 0) card.addView(text("+${list.size - 5} more", 13f, 0xBBFFFFFF.toInt()))
+            if (list.size > 6) card.addView(text("+${list.size - 6} more", 13f, 0xFF6B7080.toInt()))
             board.addView(card, lp(0, WRAP, 1f).apply { if (i > 0) marginStart = dp(8) })
         }
     }
@@ -354,17 +393,8 @@ class HomeActivity : AppCompatActivity() {
         for (i in 0..1) {
             val number = Prefs.callNumber(this, i).trim()
             if (number.isEmpty()) continue
-            val b = Button(this).apply {
-                text = "Call ${Prefs.callName(this@HomeActivity, i)}"
-                isAllCaps = false
-                textSize = 20f
-                setTextColor(Color.WHITE)
-                setTypeface(typeface, android.graphics.Typeface.BOLD)
-                background = rounded(0xFF22B573.toInt(), dpf(32f))
-                minHeight = dp(64)
-                setOnClickListener { call(number) }
-            }
-            row.addView(b, lp(0, dp(64), 1f).apply { setMargins(dp(6), 0, dp(6), 0) })
+            val b = SlideToCall(this, Prefs.callName(this, i)) { call(number) }
+            row.addView(b, lp(0, dp(64), 1f).apply { setMargins(dp(5), 0, dp(5), 0) })
         }
         row.visibility = if (row.childCount == 0) View.GONE else View.VISIBLE
     }
