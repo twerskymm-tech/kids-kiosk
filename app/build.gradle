@@ -1,0 +1,59 @@
+apply plugin: 'com.android.application'
+
+def runNumber = (System.getenv('GITHUB_RUN_NUMBER') ?: '1').toInteger()
+
+android {
+    namespace 'com.kidskiosk.phone'
+    compileSdk 37
+
+    defaultConfig {
+        applicationId 'com.kidskiosk.phone'
+        minSdk 26
+        targetSdk 34
+        versionCode runNumber
+        versionName "1.0.${runNumber}"
+    }
+
+    // One fixed signing key, so each new version installs over the old one.
+    // The key file lives only on GitHub (Actions cache), never in the repo.
+    def keystorePath = System.getenv('KIOSK_KEYSTORE')
+    signingConfigs {
+        kiosk {
+            if (keystorePath) {
+                storeFile file(keystorePath)
+                storePassword System.getenv('KIOSK_KEYSTORE_PASSWORD')
+                keyAlias 'kiosk'
+                keyPassword System.getenv('KIOSK_KEYSTORE_PASSWORD')
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig keystorePath ? signingConfigs.kiosk : signingConfigs.debug
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    buildFeatures {
+        buildConfig true
+    }
+
+    lint {
+        abortOnError false
+        checkReleaseBuilds false
+    }
+}
+
+dependencies {
+    implementation "androidx.core:core-ktx:1.19.1"
+    implementation "androidx.appcompat:appcompat:1.8.0"
+    implementation "com.google.android.material:material:1.14.0"
+    // Zmanim (candle lighting, sunset, Jewish calendar) worked out on the phone
+    implementation "com.kosherjava:zmanim:2.5.0"
+}

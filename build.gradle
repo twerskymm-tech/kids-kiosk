@@ -1,0 +1,19 @@
+// Kids Home: a locked home screen for the kids' phone.
+// Built on GitHub (see .github/workflows/android.yml); there is no local build setup.
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:9.4.1'
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:2.3.20"
+    }
+}
+
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}

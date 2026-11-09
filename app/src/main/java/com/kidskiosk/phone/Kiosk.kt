@@ -1,0 +1,133 @@
+package com.kidskiosk.phone
+
+import android.Manifest
+import android.app.Activity
+import android.app.ActivityManager
+import android.app.admin.DeviceAdminReceiver
+import android.app.admin.DevicePolicyManager
+import android.app.admin.SystemUpdatePolicy
+import android.content.BroadcastReceiver
+import android.content.ComponentName
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.os.Build
+import android.os.UserManager
+import android.provider.Settings
+
+/**
+ * Full lock. The app is the phone's "device owner" (set once from a computer, see README),
+ * so Android itself keeps the phone pinned to the kids' home screen and the allowed apps.
+ */
+object Kiosk {
+    const val VOICE = "com.google.android.apps.googlevoice"
+
+    private val RESTRICTIONS = listOf(
+        UserManager.DISALLOW_FACTORY_RESET,
+        UserManager.DISALLOW_SAFE_BOOT,
+        UserManager.DISALLOW_ADD_USER,
+        UserManager.DISALLOW_INSTALL_UNKNOWN_SOURCES,
+    )
+
+    private fun dpm(c: Context) = c.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
+    fun admin(c: Context) = ComponentName(c, AdminReceiver::class.java)
+    fun isOwner(c: Context): Boolean = runCatching { dpm(c).isDeviceOwnerApp(c.packageName) }.getOrDefault(false)
+
+    /** Apps the kids may use: what the parent ticked, or at first Greenlight and 24/6 if they are installed. */
+    fun allowedApps(c: Context): Set<String> {
+        Prefs.allowed(c)?.let { return it }
+        return launchableApps(c).filter { (_, label) ->
+            val l = label.lowercase()
+            l.contains("greenlight") || l.contains("24/6") || l.contains("24 6")
+        }.map { it.first }.toSet()
+    }
+
+    /** Every app with an icon (package, label), sorted by name. */
+    fun launchableApps(c: Context): List<Pair<String, String>> {
+        val pm = c.packageManager
+        val i = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+        @Suppress("DEPRECATION")
+        return pm.queryIntentActivities(i, 0)
+            .map { it.activityInfo.packageName to it.loadLabel(pm).toString() }
+            .filter { it.first != c.packageName }
+            .distinctBy { it.first }
+            .sortedBy { it.second.lowercase() }
+    }
+
+    /** Everything full lock turns on. Safe to run again any time. */
+    fun apply(c: Context) {
+        if (!isOwner(c)) return
+        val d = dpm(c); val a = admin(c)
+        val pkgs = (allowedApps(c) + c.packageName + VOICE).toTypedArray()
+        runCatching { d.setLockTaskPackages(a, pkgs) }
+        // Home button works (comes back here). No notifications, no recent apps, no status bar info.
+        // The power menu stays so the phone can be turned off.
+        if (Build.VERSION.SDK_INT >= 28) runCatching {
+            d.setLockTaskFeatures(a, DevicePolicyManager.LOCK_TASK_FEATURE_HOME or DevicePolicyManager.LOCK_TASK_FEATURE_GLOBAL_ACTIONS)
+        }
+        // Always the home screen
+        runCatching {
+            val f = IntentFilter(Intent.ACTION_MAIN).apply { addCategory(Intent.CATEGORY_HOME); addCategory(Intent.CATEGORY_DEFAULT) }
+            d.addPersistentPreferredActivity(a, f, ComponentName(c, HomeActivity::class.java))
+        }
+        RESTRICTIONS.forEach { r -> runCatching { d.addUserRestriction(a, r) } }
+        // Location for Shabbos times, and calls through Google Voice, with no questions
+        listOf(Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.CALL_PHONE).forEach { p ->
+            runCatching { d.setPermissionGrantState(a, c.packageName, p, DevicePolicyManager.PERMISSION_GRANT_STATE_GRANTED) }
+        }
+        // No lock screen swipe for the kids; Android updates only at night (1–5 AM)
+        runCatching { d.setKeyguardDisabled(a, true) }
+        runCatching { d.setSystemUpdatePolicy(a, SystemUpdatePolicy.createWindowedInstallPolicy(60, 300)) }
+    }
+
+    /** Brightness 0–255 (owner can change it without asking). */
+    fun setBrightness(c: Context, v: Int): Boolean {
+        if (!isOwner(c) || Build.VERSION.SDK_INT < 28) return false
+        return runCatching {
+            dpm(c).setSystemSetting(admin(c), Settings.System.SCREEN_BRIGHTNESS_MODE, Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL.toString())
+            dpm(c).setSystemSetting(admin(c), Settings.System.SCREEN_BRIGHTNESS, v.coerceIn(1, 255).toString())
+        }.isSuccess
+    }
+
+    fun isLocked(c: Context): Boolean {
+        val am = c.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+        return am.lockTaskModeState != ActivityManager.LOCK_TASK_MODE_NONE
+    }
+
+    fun lock(a: Activity) { if (isOwner(a) && !isLocked(a)) runCatching { a.startLockTask() } }
+    fun unlock(a: Activity) { if (isLocked(a)) runCatching { a.stopLockTask() } }
+
+    /** Takes the lock off completely (before uninstalling the app). */
+    fun removeOwner(a: Activity) {
+        if (!isOwner(a)) return
+        val d = dpm(a); val ad = admin(a)
+        unlock(a)
+        RESTRICTIONS.forEach { r -> runCatching { d.clearUserRestriction(ad, r) } }
+        runCatching { d.clearPackagePersistentPreferredActivities(ad, a.packageName) }
+        runCatching { d.setKeyguardDisabled(ad, false) }
+        runCatching { d.setLockTaskPackages(ad, arrayOf()) }
+        @Suppress("DEPRECATION")
+        runCatching { d.clearDeviceOwnerApp(a.packageName) }
+    }
+
+    fun isInstalled(c: Context, pkg: String): Boolean =
+        runCatching { c.packageManager.getPackageInfo(pkg, 0); true }.getOrDefault(false)
+}
+
+/** The app as device owner. */
+class AdminReceiver : DeviceAdminReceiver() {
+    override fun onEnabled(context: Context, intent: Intent) {
+        Kiosk.apply(context)
+    }
+}
+
+/** After the app is updated, open the kids' screen again. */
+class UpdatedReceiver : BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent) {
+        if (intent.action != Intent.ACTION_MY_PACKAGE_REPLACED) return
+        Kiosk.apply(context)
+        runCatching {
+            context.startActivity(Intent(context, HomeActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        }
+    }
+}

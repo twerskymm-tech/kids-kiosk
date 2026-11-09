@@ -1,0 +1,13 @@
+<resources>
+    <style name="AppTheme" parent="Theme.MaterialComponents.Light.NoActionBar">
+        <item name="colorPrimary">#6C4CF1</item>
+        <item name="colorPrimaryDark">#5038C4</item>
+        <item name="colorAccent">#6C4CF1</item>
+        <item name="android:windowBackground">@android:color/white</item>
+    </style>
+
+    <style name="HomeTheme" parent="AppTheme">
+        <item name="android:windowBackground">@android:color/black</item>
+        <item name="android:windowShowWallpaper">false</item>
+    </style>
+</resources>
