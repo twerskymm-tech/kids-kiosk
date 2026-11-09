@@ -45,6 +45,7 @@ class ParentActivity : AppCompatActivity() {
     private lateinit var callFields: List<Pair<EditText, EditText>>
     private lateinit var namesField: EditText
     private lateinit var glKidsField: EditText
+    private lateinit var choreList: LinearLayout
     private lateinit var latField: EditText
     private lateinit var lonField: EditText
     private lateinit var candleField: EditText
@@ -139,13 +140,19 @@ class ParentActivity : AppCompatActivity() {
             apps.addView(r, lp(MATCH, WRAP).apply { topMargin = dp(4) })
         }
 
-        apps.addView(text("Greenlight for each kid", 15f, ink, bold = true), lp(MATCH, WRAP).apply { topMargin = dp(14) })
-        apps.addView(text("Type the kids' names, separated by commas (e.g. Rivky, Chaya). Each gets her own Greenlight tile. Switching kids signs Greenlight out, and the saved password fills in on the login screen.", 13f, muted))
+        apps.addView(text("Kids' names", 15f, ink, bold = true), lp(MATCH, WRAP).apply { topMargin = dp(14) })
+        apps.addView(text("Separated by commas (e.g. Rivky, Chaya). Used for the chores board and for a Greenlight tile per kid.", 13f, muted))
         glKidsField = field(Prefs.greenlightKids(this).joinToString(", "), "Names, e.g. Rivky, Chaya")
         apps.addView(glKidsField)
-        apps.addView(button("Password autofill settings") {
-            open(Intent(Settings.ACTION_REQUEST_SET_AUTOFILL_SERVICE).setData(Uri.parse("package:com.google.android.gms")))
-        }, lp(MATCH, dp(48)).apply { topMargin = dp(6) })
+        apps.addView(switch("Separate Greenlight tile per kid (signs the other kid out)", Prefs.greenlightSplit(this)) { on -> Prefs.setGreenlightSplit(this, on) })
+
+        // Chores board
+        val chores = card("Chores board", "Shows each kid's chores for today on the home screen; they tap to check them off. Ticks reset every morning.")
+        chores.addView(switch("Show chores board", Chores.enabled(this)) { on -> Chores.setEnabled(this, on) })
+        choreList = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        chores.addView(choreList)
+        chores.addView(button("Add a chore") { save(); addChore() }, lp(MATCH, dp(52)).apply { topMargin = dp(8) })
+        showChores()
 
         // Calls
         val calls = card("Call buttons", "The kids' screen shows a button for each number. Calls go over Wi-Fi through the calling app you choose below (Google Voice, Voiply, ...).")
@@ -299,6 +306,50 @@ class ParentActivity : AppCompatActivity() {
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == 7 && grantResults.any { it == PackageManager.PERMISSION_GRANTED }) useLocation()
+    }
+
+    private fun showChores() {
+        choreList.removeAllViews()
+        val all = Chores.all(this)
+        if (all.isEmpty()) { choreList.addView(text("No chores yet.", 14f, muted), lp(MATCH, WRAP).apply { topMargin = dp(6) }); return }
+        for (kid in all.map { it.kid }.distinct()) {
+            choreList.addView(text(kid, 15f, ink, bold = true), lp(MATCH, WRAP).apply { topMargin = dp(10) })
+            all.filter { it.kid == kid }.forEach { ch ->
+                val r = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+                r.addView(text("${ch.title}  (${Chores.daysText(ch.days)})", 15f, ink), lp(0, WRAP, 1f))
+                r.addView(button("Remove") { Chores.remove(this, ch.id); showChores() }, lp(WRAP, dp(40)))
+                choreList.addView(r, lp(MATCH, WRAP).apply { topMargin = dp(4) })
+            }
+        }
+    }
+
+    private fun addChore() {
+        val kids = Chores.kids(this)
+        if (kids.isEmpty()) { toast("Type the kids' names first (Kids' apps section)"); return }
+        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(24), dp(8), dp(24), 0) }
+        val title = field("", "Chore, e.g. Make your bed")
+        box.addView(title)
+        box.addView(text("For", 14f, muted, bold = true), lp(MATCH, WRAP).apply { topMargin = dp(10) })
+        val kidChecks = kids.map { k -> CheckBox(this).apply { text = k; isChecked = true }.also { box.addView(it) } }
+        box.addView(text("Days", 14f, muted, bold = true), lp(MATCH, WRAP).apply { topMargin = dp(10) })
+        val dayNames = listOf("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Shabbos")
+        val dayRow1 = LinearLayout(this); val dayRow2 = LinearLayout(this)
+        val dayChecks = dayNames.mapIndexed { i, d -> CheckBox(this).apply { text = d; isChecked = i < 6 }.also { (if (i < 4) dayRow1 else dayRow2).addView(it) } }
+        box.addView(dayRow1); box.addView(dayRow2)
+        AlertDialog.Builder(this)
+            .setTitle("Add a chore")
+            .setView(ScrollView(this).apply { addView(box) })
+            .setPositiveButton("Add") { _, _ ->
+                val t = title.text.toString().trim()
+                var days = 0
+                dayChecks.forEachIndexed { i, cb -> if (cb.isChecked) days = days or (1 shl i) }
+                val who = kids.filterIndexed { i, _ -> kidChecks[i].isChecked }
+                if (t.isEmpty() || days == 0 || who.isEmpty()) { toast("Type a chore, and pick at least one kid and one day"); return@setPositiveButton }
+                who.forEach { Chores.add(this, it, t, days) }
+                showChores()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 
     private fun showCallApp() {

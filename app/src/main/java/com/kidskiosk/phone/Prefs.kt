@@ -45,6 +45,8 @@ object Prefs {
     fun greenlightKids(c: Context): List<String> =
         (p(c).getString("gl_kids", "") ?: "").split(",").map { it.trim() }.filter { it.isNotEmpty() }
     fun setGreenlightKids(c: Context, s: String) { p(c).edit().putString("gl_kids", s).apply() }
+    fun greenlightSplit(c: Context) = p(c).getBoolean("gl_split", false)
+    fun setGreenlightSplit(c: Context, on: Boolean) { p(c).edit().putBoolean("gl_split", on).apply() }
     fun greenlightLast(c: Context) = p(c).getString("gl_last", "") ?: ""
     fun setGreenlightLast(c: Context, s: String) { p(c).edit().putString("gl_last", s).apply() }
 

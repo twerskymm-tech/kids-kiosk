@@ -42,6 +42,7 @@ class HomeActivity : AppCompatActivity() {
     private lateinit var bg: ImageView
     private lateinit var greeting: TextView
     private lateinit var grid: TileGrid
+    private lateinit var board: LinearLayout
     private lateinit var greetingNames: TextView
     private lateinit var main: View
     private lateinit var lockLayer: LinearLayout
@@ -59,7 +60,7 @@ class HomeActivity : AppCompatActivity() {
     private var firstTapAt = 0L
 
     private val refresh = object : Runnable {
-        override fun run() { updateLock(); handler.postDelayed(this, 15_000L) }
+        override fun run() { updateLock(); fillBoard(); handler.postDelayed(this, 30_000L) }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -82,6 +83,7 @@ class HomeActivity : AppCompatActivity() {
         loadPhoto()
         greeting.text = greetingText()
         fillTiles()
+        fillBoard()
         fillCalls(callRow); fillCalls(lockCallRow)
         setupNote.visibility = if (Kiosk.isOwner(this)) View.GONE else View.VISIBLE
         handler.removeCallbacks(refresh); handler.post(refresh)
@@ -126,8 +128,11 @@ class HomeActivity : AppCompatActivity() {
             format12Hour = "EEEE, MMMM d"; format24Hour = "EEEE, MMMM d"
         }, lp(MATCH, WRAP))
 
+        board = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        col.addView(board, lp(MATCH, WRAP).apply { topMargin = dp(14) })
+
         grid = TileGrid(this)
-        col.addView(grid, lp(MATCH, 0, 1f).apply { topMargin = dp(16) })
+        col.addView(grid, lp(MATCH, 0, 1f).apply { topMargin = dp(14) })
 
         callRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         col.addView(callRow, lp(MATCH, WRAP).apply { topMargin = dp(12) })
@@ -263,7 +268,7 @@ class HomeActivity : AppCompatActivity() {
         val glKids = Prefs.greenlightKids(this)
         data class T(val pkg: String, val label: String, val launch: Intent, val kid: String?)
         val tiles = apps.flatMap { (pkg, label, launch) ->
-            if (glKids.size >= 2 && label.lowercase().contains("greenlight")) glKids.map { T(pkg, "$it's $label", launch, it) }
+            if (Prefs.greenlightSplit(this) && glKids.size >= 2 && label.lowercase().contains("greenlight")) glKids.map { T(pkg, "$it's $label", launch, it) }
             else listOf(T(pkg, label, launch, null))
         }
         tiles.forEachIndexed { i, t ->
@@ -289,6 +294,41 @@ class HomeActivity : AppCompatActivity() {
             if (ok) Prefs.setGreenlightLast(this, kid)
             toast(if (ok) "Log in as $kid" else "Log out of Greenlight, then log in as $kid")
             open(launch)
+        }
+    }
+
+    /** Chores board: one card per kid with today's chores; tap a chore to check it off. */
+    private fun fillBoard() {
+        board.removeAllViews()
+        val kids = Chores.kids(this)
+        if (!Chores.enabled(this) || kids.isEmpty() || Chores.all(this).isEmpty()) { board.visibility = View.GONE; return }
+        board.visibility = View.VISIBLE
+        val done = Chores.done(this)
+        kids.forEachIndexed { i, kid ->
+            val card = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(12), dp(10), dp(12), dp(10))
+                background = rounded(0x66000000, dpf(18f))
+            }
+            val list = Chores.today(this, kid).sortedBy { it.id in done }
+            val left = list.count { it.id !in done }
+            card.addView(text(if (left == 0) kid else "$kid · $left left", 16f, Color.WHITE, bold = true))
+            if (list.isEmpty() || left == 0) {
+                card.addView(text(if (list.isEmpty()) "No chores today" else "All done! \u2B50", 15f, 0xFFFFE08A.toInt(), bold = true),
+                    lp(MATCH, WRAP).apply { topMargin = dp(4) })
+            }
+            list.take(5).forEach { ch ->
+                val isDone = ch.id in done
+                if (left == 0) return@forEach
+                card.addView(text((if (isDone) "\u2714  " else "\u25CB  ") + ch.title, 15f, if (isDone) 0x99FFFFFF.toInt() else Color.WHITE).apply {
+                    if (isDone) paintFlags = paintFlags or android.graphics.Paint.STRIKE_THRU_TEXT_FLAG
+                    maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END
+                    setPadding(0, dp(5), 0, dp(5))
+                    setOnClickListener { Chores.toggle(this@HomeActivity, ch.id); fillBoard() }
+                })
+            }
+            if (list.size > 5 && left > 0) card.addView(text("+${list.size - 5} more", 13f, 0xBBFFFFFF.toInt()))
+            board.addView(card, lp(0, WRAP, 1f).apply { if (i > 0) marginStart = dp(8) })
         }
     }
 
