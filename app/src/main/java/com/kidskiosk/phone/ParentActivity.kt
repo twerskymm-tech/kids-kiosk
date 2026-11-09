@@ -66,6 +66,15 @@ class ParentActivity : AppCompatActivity() {
         }.onFailure { toast("Couldn't use that photo") }
     }
 
+    private var sceneKey = ""
+    private val pickScene = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+        if (uri == null || sceneKey.isEmpty()) return@registerForActivityResult
+        runCatching {
+            contentResolver.openInputStream(uri)!!.use { inp -> Scenes.photoFile(this, sceneKey).outputStream().use { inp.copyTo(it) } }
+            Prefs.bumpPhoto(this); toast("${Scenes.ALL[sceneKey]} picture saved")
+        }.onFailure { toast("Couldn't use that photo") }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.statusBarColor = brand
@@ -196,6 +205,16 @@ class ParentActivity : AppCompatActivity() {
         lr.addView(button("Choose photo") { runCatching { pickPhoto.launch(arrayOf("image/*")) }.onFailure { toast("No photo picker on this phone") } }, lp(0, dp(52), 1f).apply { marginEnd = dp(6) })
         lr.addView(button("Remove photo") { HomeActivity.photoFile(this).delete(); Prefs.bumpPhoto(this); toast("Photo removed") }, lp(0, dp(52), 1f).apply { marginStart = dp(6) })
         look.addView(lr, lp(MATCH, WRAP).apply { topMargin = dp(6) })
+
+        // Shabbos / Yom Tov pictures
+        val pics = card("Shabbos and Yom Tov pictures", "Each one has a built-in picture. You can use your own photo instead.")
+        for ((key, name) in Scenes.ALL) {
+            val r = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+            r.addView(text(name, 15f, ink), lp(0, WRAP, 1f))
+            r.addView(button("Own photo") { sceneKey = key; runCatching { pickScene.launch(arrayOf("image/*")) }.onFailure { toast("No photo picker on this phone") } }, lp(WRAP, dp(44)).apply { marginStart = dp(6) })
+            r.addView(button("Built-in") { Scenes.photoFile(this, key).delete(); Prefs.bumpPhoto(this); toast("$name: built-in picture") }, lp(WRAP, dp(44)).apply { marginStart = dp(6) })
+            pics.addView(r, lp(MATCH, WRAP).apply { topMargin = dp(6) })
+        }
 
         // PIN and setup
         val sec = card("PIN and setup", if (Kiosk.isOwner(this)) "Full lock is on." else "Full lock is NOT on yet. Follow the setup guide (factory reset + one command from your PC).")

@@ -93,6 +93,19 @@ public final class Shabbos {
         public String title;       // e.g. "שבת קודש פרשת תולדות" or "ראש השנה"
         public String hebrewDate;  // e.g. "ב׳ כסלו תשפ״ז"
         public Date candle, shma, sunset, havdalah;
+        public String occasion;    // picture to show: shabbos, rosh_hashana, yom_kippur, sukkos, simchas_torah, pesach, shavuos
+    }
+
+    static String occasion(JewishCalendar j) {
+        switch (j.getYomTovIndex()) {
+            case JewishCalendar.ROSH_HASHANA: return "rosh_hashana";
+            case JewishCalendar.YOM_KIPPUR: return "yom_kippur";
+            case JewishCalendar.SUCCOS: case JewishCalendar.CHOL_HAMOED_SUCCOS: case JewishCalendar.HOSHANA_RABBA: return "sukkos";
+            case JewishCalendar.SHEMINI_ATZERES: case JewishCalendar.SIMCHAS_TORAH: return "simchas_torah";
+            case JewishCalendar.PESACH: case JewishCalendar.CHOL_HAMOED_PESACH: return "pesach";
+            case JewishCalendar.SHAVUOS: return "shavuos";
+            default: return "shabbos";
+        }
     }
 
     public static Info info(Window w, Date now, Place p) {
@@ -118,6 +131,7 @@ public final class Shabbos {
             if (special != null && !special.isEmpty()) t.append(" · ").append(special);
         }
         i.title = t.toString();
+        i.occasion = occasion(j);
         i.hebrewDate = f.format(j);
         ComplexZmanimCalendar z = zc(day, p);
         i.candle = w.start;

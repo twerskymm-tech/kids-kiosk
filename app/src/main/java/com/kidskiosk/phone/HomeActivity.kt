@@ -46,6 +46,9 @@ class HomeActivity : AppCompatActivity() {
     private lateinit var grid: GridLayout
     private lateinit var main: View
     private lateinit var lockLayer: LinearLayout
+    private lateinit var lockFrame: FrameLayout
+    private lateinit var lockBg: ImageView
+    private var shownScene = ""
     private lateinit var lockTitle: TextView
     private lateinit var lockSub: TextView
     private lateinit var zmanim: LinearLayout
@@ -135,33 +138,40 @@ class HomeActivity : AppCompatActivity() {
         root.addView(col, FrameLayout.LayoutParams(MATCH, MATCH))
 
         // Bedtime / Shabbos screen
+        lockFrame = FrameLayout(this).apply { isClickable = true; visibility = View.GONE }
+        lockBg = ImageView(this).apply { scaleType = ImageView.ScaleType.CENTER_CROP }
+        lockFrame.addView(lockBg, FrameLayout.LayoutParams(MATCH, MATCH))
+        // darker at the top so the clock and times read on any picture
+        lockFrame.addView(View(this).apply {
+            background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+                intArrayOf(0xB3000000.toInt(), 0x66000000, 0x00000000, 0x00000000))
+        }, FrameLayout.LayoutParams(MATCH, MATCH))
         lockLayer = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
-            setPadding(dp(28), dp(28), dp(28), dp(28))
-            background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(0xFF141E46.toInt(), 0xFF2B2A6B.toInt()))
-            isClickable = true
-            visibility = View.GONE
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(dp(24), dp(20), dp(24), dp(24))
         }
         lockLayer.addView(TextClock(this).apply {
             textSize = 84f; setTextColor(Color.WHITE); gravity = Gravity.CENTER
             format12Hour = "h:mm"; format24Hour = "H:mm"
             setTypeface(typeface, android.graphics.Typeface.BOLD)
         }, lp(MATCH, WRAP))
-        lockTitle = text("", 32f, Color.WHITE, bold = true, gravity = Gravity.CENTER)
+        lockTitle = text("", 26f, Color.WHITE, bold = true, gravity = Gravity.CENTER)
         lockSub = text("", 18f, 0xDDFFFFFF.toInt(), gravity = Gravity.CENTER)
         lockLayer.addView(lockTitle, lp(MATCH, WRAP).apply { topMargin = dp(8) })
         lockLayer.addView(lockSub, lp(MATCH, WRAP).apply { topMargin = dp(6) })
         zmanim = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(20), dp(14), dp(20), dp(14))
-            background = rounded(0x22FFFFFF, dpf(20f))
+            background = rounded(0x66000000, dpf(20f))
             layoutDirection = View.LAYOUT_DIRECTION_RTL
         }
-        lockLayer.addView(zmanim, lp(MATCH, WRAP).apply { topMargin = dp(24) })
+        lockLayer.addView(zmanim, lp(MATCH, WRAP).apply { topMargin = dp(16) })
+        lockLayer.addView(View(this), lp(MATCH, 0, 1f))   // the picture shows here
         lockCallRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        lockLayer.addView(lockCallRow, lp(MATCH, WRAP).apply { topMargin = dp(48) })
-        root.addView(lockLayer, FrameLayout.LayoutParams(MATCH, MATCH))
+        lockLayer.addView(lockCallRow, lp(MATCH, WRAP))
+        lockFrame.addView(lockLayer, FrameLayout.LayoutParams(MATCH, MATCH))
+        root.addView(lockFrame, FrameLayout.LayoutParams(MATCH, MATCH))
 
         // Hidden parent corner (top right): 5 quick taps opens the PIN pad
         root.addView(View(this).apply {
@@ -325,12 +335,13 @@ class HomeActivity : AppCompatActivity() {
     private fun updateLock() {
         val s = Locks.current(this)
         if (s.reason == Locks.Reason.NONE) {
-            lockLayer.visibility = View.GONE; main.visibility = View.VISIBLE
+            lockFrame.visibility = View.GONE; main.visibility = View.VISIBLE
             greeting.text = greetingText()
             return
         }
         zmanim.removeAllViews()
         if (s.reason == Locks.Reason.BEDTIME) {
+            showScene("bedtime")
             lockTitle.text = "Good night"
             lockSub.text = "The phone opens again at ${timeText(this, s.until)}."
             zmanim.visibility = View.GONE
@@ -339,6 +350,7 @@ class HomeActivity : AppCompatActivity() {
             val now = java.util.Date()
             val w = pl?.let { runCatching { Shabbos.now(now, it) }.getOrNull() }
             val info = if (pl != null && w != null) runCatching { Shabbos.info(w, now, pl) }.getOrNull() else null
+            showScene(info?.occasion ?: "shabbos")
             if (info == null) {
                 lockTitle.text = if (s.reason == Locks.Reason.YOMTOV) "גוט יום טוב" else "גוט שבת"
                 lockSub.text = ""
@@ -352,7 +364,29 @@ class HomeActivity : AppCompatActivity() {
                 zmanim.visibility = View.VISIBLE
             }
         }
-        lockLayer.visibility = View.VISIBLE; main.visibility = View.INVISIBLE
+        lockFrame.visibility = View.VISIBLE; main.visibility = View.INVISIBLE
+    }
+
+    /** The picture behind the lock screen: the parent's own photo for that occasion, or the built-in one. */
+    private fun showScene(key: String) {
+        val stamp = key + Prefs.photoVersion(this)
+        if (stamp == shownScene) return
+        shownScene = stamp
+        if (key == "bedtime") {
+            lockBg.setImageDrawable(GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(0xFF141E46.toInt(), 0xFF2B2A6B.toInt())))
+            return
+        }
+        val own = Scenes.photoFile(this, key)
+        val bmp = if (own.exists()) runCatching { decodeSampled(own) }.getOrNull() else null
+        if (bmp != null) lockBg.setImageBitmap(bmp) else lockBg.setImageResource(Scenes.builtIn(key))
+    }
+
+    private fun decodeSampled(f: File): android.graphics.Bitmap? {
+        val o = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(f.path, o)
+        var s = 1
+        while (o.outWidth / (s * 2) >= 1080 && o.outHeight / (s * 2) >= 1080) s *= 2
+        return BitmapFactory.decodeFile(f.path, BitmapFactory.Options().apply { inSampleSize = s })
     }
 
     private fun zmanRow(label: String, ms: Long): View {
