@@ -381,6 +381,8 @@ class HomeActivity : AppCompatActivity() {
                 totals[kid] = total
                 pill.addView(total)
             }
+            val streak = Chores.streak(this, kid)
+            if (streak >= 2) pill.addView(text("\uD83D\uDD25 $streak", 11f, Color.WHITE, bold = true, gravity = Gravity.CENTER))
             head.addView(pill, lp(colW - dp(4), WRAP).apply { marginStart = dp(4) })
         }
         card.addView(head, lp(MATCH, WRAP))
@@ -437,7 +439,95 @@ class HomeActivity : AppCompatActivity() {
                 card.addView(row, lp(MATCH, WRAP))
             }
         }
+        // Savings goals
+        val goals = kids.mapNotNull { k -> Chores.goal(this, k)?.let { k to it } }
+        goals.chunked(2).forEachIndexed { i, pair ->
+            val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+            pair.forEachIndexed { j, (kid, g) ->
+                row.addView(goalView(kid, g), lp(0, WRAP, 1f).apply { if (j > 0) marginStart = dp(8) })
+            }
+            if (pair.size == 1 && kids.size > 1) row.addView(View(this), lp(0, 1, 1f).apply { marginStart = dp(8) })
+            card.addView(row, lp(MATCH, WRAP).apply { topMargin = dp(if (i == 0) 8 else 6) })
+        }
         board.addView(card, lp(MATCH, WRAP))
+    }
+
+    private val goalPics = mutableMapOf<String, Pair<Long, android.graphics.Bitmap?>>()
+
+    /** What she is saving for: picture, name, "$3 of $10" and a bar in her color. */
+    private fun goalView(kid: String, g: Chores.Goal): View {
+        val color = Chores.color(this, kid)
+        val saved = Chores.saved(this, kid)
+        val reached = saved >= g.cents
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(6), dp(6), dp(8), dp(6))
+            background = rounded((color and 0x00FFFFFF) or 0x1F000000, dpf(12f))
+        }
+        val f = Chores.goalFile(this, kid)
+        val bmp = if (f.exists()) {
+            val cached = goalPics[kid]
+            if (cached != null && cached.first == f.lastModified()) cached.second
+            else Slides.decode(f, 240).also { goalPics[kid] = f.lastModified() to it }
+        } else null
+        val size = dp(40)
+        if (bmp != null) {
+            box.addView(ImageView(this).apply {
+                setImageBitmap(bmp); scaleType = ImageView.ScaleType.CENTER_CROP
+                clipToOutline = true; background = rounded(Color.WHITE, dpf(9f))
+            }, lp(size, size))
+        } else {
+            box.addView(text("\uD83C\uDFAF", 22f, color, gravity = Gravity.CENTER).apply { background = rounded(Color.WHITE, dpf(9f)) }, lp(size, size))
+        }
+        val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        col.addView(text(g.title.replaceFirstChar { it.uppercase() }, 13f, 0xFF1F2333.toInt(), bold = true).apply {
+            maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END
+        })
+        val sub = if (reached) "\uD83C\uDF89 $kid did it!" else "${Chores.money(saved)} of ${Chores.money(g.cents)}"
+        col.addView(text(sub, 12f, if (reached) 0xFF15803D.toInt() else 0xFF4B5060.toInt(), bold = true).apply { maxLines = 1 })
+        val frac = (saved.toFloat() / g.cents).coerceIn(0f, 1f)
+        val bar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            background = rounded(0x22000000, dpf(4f)); clipToOutline = true
+        }
+        if (frac > 0f) bar.addView(View(this).apply { background = rounded(color, dpf(4f)) }, lp(0, MATCH, frac))
+        if (frac < 1f) bar.addView(View(this), lp(0, MATCH, 1f - frac))
+        col.addView(bar, lp(MATCH, dp(8)).apply { topMargin = dp(3) })
+        box.addView(col, lp(0, WRAP, 1f).apply { marginStart = dp(8) })
+        return box
+    }
+
+    /** She finished her whole day: confetti, a happy tune and a big "all done" (plus any bonus). */
+    private fun celebrate(f: Chores.Finish, shownNow: Int) {
+        val color = Chores.color(this, f.kid)
+        rootFrame.addView(ConfettiView(this, intArrayOf(color, 0xFFFFD43B.toInt(), 0xFF4DABF7.toInt(), 0xFF69DB7C.toInt(), 0xFFFF6B6B.toInt(), 0xFFB197FC.toInt(), Color.WHITE)),
+            FrameLayout.LayoutParams(MATCH, MATCH))
+        Cheer.play(f.lucky > 0)
+        val pop = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(dp(26), dp(20), dp(26), dp(20))
+            background = rounded(Color.WHITE, dpf(28f), dp(4), color)
+            elevation = dpf(16f)
+        }
+        pop.addView(text("\u2B50", 54f, Color.WHITE, gravity = Gravity.CENTER))
+        pop.addView(text("${f.kid}, all done!", 26f, color, bold = true, gravity = Gravity.CENTER))
+        if (f.streak >= 2) pop.addView(text("\uD83D\uDD25 ${f.streak} days in a row", 18f, 0xFFE8590C.toInt(), bold = true, gravity = Gravity.CENTER),
+            lp(WRAP, WRAP).apply { topMargin = dp(6) })
+        if (f.bonus > 0) pop.addView(text("Streak bonus +${Chores.money(f.bonus)}", 18f, 0xFF15803D.toInt(), bold = true, gravity = Gravity.CENTER),
+            lp(WRAP, WRAP).apply { topMargin = dp(4) })
+        if (f.lucky > 0) pop.addView(text("\uD83C\uDF40 Lucky day! +${Chores.money(f.lucky)}", 18f, 0xFF15803D.toInt(), bold = true, gravity = Gravity.CENTER),
+            lp(WRAP, WRAP).apply { topMargin = dp(4) })
+        val gone = Runnable {
+            pop.animate().alpha(0f).scaleX(0.8f).scaleY(0.8f).setDuration(250).withEndAction { rootFrame.removeView(pop) }.start()
+        }
+        pop.setOnClickListener { handler.removeCallbacks(gone); gone.run() }
+        rootFrame.addView(pop, FrameLayout.LayoutParams(WRAP, WRAP, Gravity.CENTER).apply { leftMargin = dp(24); rightMargin = dp(24) })
+        pop.scaleX = 0.3f; pop.scaleY = 0.3f; pop.alpha = 0f
+        pop.animate().scaleX(1f).scaleY(1f).alpha(1f).setDuration(420).setInterpolator(android.view.animation.OvershootInterpolator(2.2f)).start()
+        handler.postDelayed(gone, 3800)
+        val extra = f.bonus + f.lucky
+        if (extra > 0) handler.postDelayed({ countUp(f.kid, shownNow, shownNow + extra) }, 900)
+        handler.postDelayed({ fillBoard() }, if (extra > 0) 1800L else 300L)
     }
 
     /** The left part of a chart line: chore name and price. Kid cells get added after. */
@@ -467,11 +557,19 @@ class HomeActivity : AppCompatActivity() {
         val who = if (ch.kid == Chores.ANYONE) by ?: Chores.claimedBy(this, ch.id) else ch.kid
         val before = Chores.earned(this, who)
         val nowDone = Chores.toggle(this, ch.id, by)
-        if (!nowDone || ch.cents <= 0 || who.isEmpty()) { fillBoard(); return }
+        val fin = Chores.takeFinish()
+        val extra = (fin?.bonus ?: 0) + (fin?.lucky ?: 0)
+        if (!nowDone || who.isEmpty()) { fillBoard(); return }
+        if (ch.cents <= 0) {
+            if (extra > 0) showEarned[who] = before
+            fillBoard()
+            fin?.let { celebrate(it, before) }
+            return
+        }
         val start = locIn(from).let { (x, y) -> Pair(x + from.width / 2f, y + from.height / 2f) }
         showEarned[who] = before
         fillBoard()
-        board.post { flyCoins(who, start, ch.cents, before) }
+        board.post { flyCoins(who, start, ch.cents, before) { fin?.let { f -> handler.postDelayed({ celebrate(f, before + ch.cents) }, 350) } } }
     }
 
     private fun locIn(v: View): Pair<Float, Float> {
@@ -481,9 +579,9 @@ class HomeActivity : AppCompatActivity() {
     }
 
     /** Coins fly from the chore up into her total, then the total counts up and bounces. */
-    private fun flyCoins(kid: String, start: Pair<Float, Float>, cents: Int, before: Int) {
+    private fun flyCoins(kid: String, start: Pair<Float, Float>, cents: Int, before: Int, then: () -> Unit = {}) {
         val target = totals[kid]
-        if (target == null) { showEarned.remove(kid); fillBoard(); return }
+        if (target == null) { showEarned.remove(kid); fillBoard(); then(); return }
         val end = locIn(target).let { (x, y) -> Pair(x + target.width / 2f, y + target.height / 2f) }
         val size = dp(34)
         // "+$0.50" rises from the chore
@@ -515,7 +613,7 @@ class HomeActivity : AppCompatActivity() {
                 addListener(object : android.animation.AnimatorListenerAdapter() {
                     override fun onAnimationEnd(a: android.animation.Animator) {
                         rootFrame.removeView(coin)
-                        if (n == coins - 1) countUp(kid, before, before + cents)
+                        if (n == coins - 1) { countUp(kid, before, before + cents); then() }
                     }
                 })
                 start()

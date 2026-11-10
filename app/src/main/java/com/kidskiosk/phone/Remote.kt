@@ -145,6 +145,9 @@ object Remote {
             .put("chores_on", Chores.enabled(c))
             .put("photos", Slides.json(c))
             .put("kid_colors", Chores.colorsJson(c))
+            .put("goals", Chores.goalsJson(c))
+            .put("streak_bonus", Chores.streakBonus(c))
+            .put("lucky_on", Chores.luckyOn(c))
             .put("gl_split", Prefs.greenlightSplit(c))
             .put("call_app", Prefs.callApp(c))
             .put("has_place", Prefs.hasPlace(c))
@@ -168,6 +171,8 @@ object Remote {
             .put("done", JSONArray(Chores.done(c).toList()))
             .put("earned", Chores.earnedAll(c))
             .put("claims", Chores.claims(c))
+            .put("streaks", Chores.streaksJson(c))
+            .put("lifetime", JSONObject().apply { Chores.kids(c).forEach { put(it.lowercase(), Chores.lifetime(c, it)) } })
             .put("lock", JSONObject().put("reason", lock.reason.name).put("until", lock.until))
             .put("call_app", Prefs.callApp(c))
             .put("scene_names", JSONObject().apply { Scenes.ALL.forEach { (k, v) -> put(k, v) } })
@@ -197,6 +202,11 @@ object Remote {
         // Payouts: amounts to take off what each kid is owed (each change arrives once)
         s.optJSONObject("paid")?.let { j -> j.keys().forEach { k -> Chores.paid(c, k, j.optInt(k, 0)) } }
         s.optJSONObject("kid_colors")?.let { Chores.setColors(c, it) }
+        s.optJSONObject("goals")?.let { j ->
+            Chores.setGoals(c, j).forEach { (kid, url) -> Slides.download(c, url, Chores.goalFile(c, kid)) { Prefs.bumpPhoto(c) } }
+        }
+        if (s.has("streak_bonus")) Chores.setStreakBonus(c, s.optInt("streak_bonus", 50))
+        if (s.has("lucky_on")) Chores.setLuckyOn(c, s.optBoolean("lucky_on"))
         if (s.has("gl_split")) Prefs.setGreenlightSplit(c, s.optBoolean("gl_split"))
         s.optString("call_app", "").takeIf { it.isNotBlank() && Kiosk.isInstalled(c, it) }?.let { Prefs.setCallApp(c, it) }
         if (s.has("lat") && s.has("lon")) {

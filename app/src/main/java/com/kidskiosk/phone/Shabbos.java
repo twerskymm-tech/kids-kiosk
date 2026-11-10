@@ -43,6 +43,13 @@ public final class Shabbos {
 
     private static boolean assur(LocalDate d, Place p) { return jc(d, p).isAssurBemelacha(); }
 
+    /** Is this date Shabbos or Yom Tov (no place needed, only Israel or not)? */
+    public static boolean restDay(LocalDate d, boolean israel) {
+        JewishCalendar j = new JewishCalendar(d);
+        j.setInIsrael(israel);
+        return j.isAssurBemelacha();
+    }
+
     private static ComplexZmanimCalendar zc(LocalDate d, Place p) {
         ComplexZmanimCalendar z = new ComplexZmanimCalendar(new GeoLocation("home", p.lat, p.lon, p.tz));
         Calendar c = Calendar.getInstance(p.tz);
