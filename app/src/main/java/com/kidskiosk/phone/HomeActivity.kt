@@ -343,8 +343,9 @@ class HomeActivity : AppCompatActivity() {
     }
 
     /**
-     * Chores board: one card per kid with today's chores and what she has earned, two cards per row,
-     * plus an "Up for grabs" card. Tap a chore to check it off (a coin flies into her total); tap again to uncheck.
+     * Chore chart: one card, one line per chore (full name and price), and a column of checkboxes for
+     * each kid in her color with her money on top. Chores with the same name for several kids share a line.
+     * Up-for-grabs chores sit at the bottom with an "I'll do it" button.
      */
     private fun fillBoard() {
         board.removeAllViews()
@@ -354,86 +355,100 @@ class HomeActivity : AppCompatActivity() {
         board.visibility = View.VISIBLE
         val done = Chores.done(this)
         val anyMoney = Chores.all(this).any { it.cents > 0 } || kids.any { Chores.earned(this, it) > 0 }
-        val cards = mutableListOf<View>()
-        val perCard = if (kids.size > 2) 4 else 6
-        kids.forEach { kid ->
-            val list = Chores.today(this, kid)
-            val left = list.count { it.id !in done }
-            val card = choreCard(kid, Chores.color(this, kid), when {
-                list.isEmpty() -> ""
-                left == 0 -> "\u2B50 Done!"
-                else -> "$left left"
-            }, if (anyMoney) kid else null)
-            if (list.isEmpty()) card.addView(text("No chores today", 15f, 0xFF6B7080.toInt()), lp(MATCH, WRAP).apply { topMargin = dp(8); bottomMargin = dp(4) })
-            list.take(perCard).forEach { ch -> card.addView(choreRow(ch, ch.id in done, null), lp(MATCH, WRAP)) }
-            if (list.size > perCard) card.addView(text("+${list.size - perCard} more", 13f, 0xFF6B7080.toInt()))
-            cards += card
-        }
-        val grabs = Chores.grabs(this)
-        if (grabs.isNotEmpty()) {
-            val open = grabs.count { it.id !in done }
-            val card = choreCard("\uD83D\uDE4B Up for grabs", 0xFF7C5CFF.toInt(), if (open == 0) "All taken" else "$open open", null)
-            grabs.take(perCard).forEach { ch ->
-                val by = Chores.claimedBy(this, ch.id)
-                card.addView(choreRow(ch, ch.id in done, by.ifEmpty { null }), lp(MATCH, WRAP))
-            }
-            cards += card
-        }
-        // Two cards per row; an odd one out takes the whole row
-        cards.chunked(2).forEach { pair ->
-            val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-            pair.forEachIndexed { i, v -> row.addView(v, lp(0, WRAP, 1f).apply { if (i > 0) marginStart = dp(10) }) }
-            board.addView(row, lp(MATCH, WRAP).apply { if (board.childCount > 0) topMargin = dp(10) })
-        }
-    }
+        val colW = dp(when { kids.size <= 2 -> 64; kids.size == 3 -> 56; else -> 48 })
+        val priceW = if (anyMoney) dp(48) else 0
+        val ink = 0xFF1F2333.toInt()
 
-    private fun choreCard(title: String, color: Int, right: String, moneyKid: String?): LinearLayout {
         val card = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(10), dp(10), dp(10), dp(8))
+            setPadding(dp(10), dp(8), dp(10), dp(8))
             background = rounded(0xF2FFFFFF.toInt(), dpf(18f))
         }
-        val head = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(10), dp(6), dp(10), dp(6))
-            background = rounded(color, dpf(12f))
+
+        // Header: a colored pill per kid with her name and money
+        val head = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        head.addView(text("Today's chores", 14f, 0xFF6B7080.toInt(), bold = true), lp(0, WRAP, 1f))
+        if (priceW > 0) head.addView(View(this), lp(priceW, 1))
+        kids.forEach { kid ->
+            val pill = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
+                setPadding(dp(2), dp(4), dp(2), dp(4))
+                background = rounded(Chores.color(this@HomeActivity, kid), dpf(10f))
+            }
+            pill.addView(text(kid, 13f, Color.WHITE, bold = true, gravity = Gravity.CENTER).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
+            if (anyMoney) {
+                val total = text(Chores.money(showEarned[kid] ?: Chores.earned(this, kid)), 12f, Color.WHITE, bold = true, gravity = Gravity.CENTER)
+                totals[kid] = total
+                pill.addView(total)
+            }
+            head.addView(pill, lp(colW - dp(4), WRAP).apply { marginStart = dp(4) })
         }
-        val nameCol = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        nameCol.addView(text(title, 17f, Color.WHITE, bold = true).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
-        if (moneyKid != null) {
-            val total = text("\uD83D\uDCB0 " + Chores.money(showEarned[moneyKid] ?: Chores.earned(this, moneyKid)), 15f, Color.WHITE, bold = true)
-            totals[moneyKid] = total
-            nameCol.addView(total)
-        }
-        head.addView(nameCol, lp(0, WRAP, 1f))
-        head.addView(text(right, 14f, Color.WHITE, bold = true))
         card.addView(head, lp(MATCH, WRAP))
-        return card
+
+        // One line per chore name (shared between kids who have it today)
+        data class Line(val title: String, val cents: Int, val byKid: Map<String, Chores.Chore>)
+        val lines = linkedMapOf<String, Line>()
+        kids.forEach { kid ->
+            Chores.today(this, kid).forEach { ch ->
+                val key = ch.title.trim().lowercase() + "|" + ch.cents
+                val l = lines[key] ?: Line(ch.title.trim(), ch.cents, emptyMap())
+                lines[key] = l.copy(byKid = l.byKid + (kid to ch))
+            }
+        }
+        val maxLines = 7
+        lines.values.take(maxLines).forEach { line ->
+            val row = chartRow(line.title, line.cents, priceW)
+            kids.forEach { kid ->
+                val ch = line.byKid[kid]
+                if (ch == null) { row.addView(View(this), lp(colW, dp(32))); return@forEach }
+                val isDone = ch.id in done
+                val box = text(if (isDone) "\u2713" else "", 16f, Color.WHITE, bold = true, gravity = Gravity.CENTER).apply {
+                    background = if (isDone) rounded(Chores.color(this@HomeActivity, kid), dpf(15f)) else rounded(Color.WHITE, dpf(15f), dp(2), 0xFFB8BCCB.toInt())
+                }
+                val cell = FrameLayout(this).apply { setOnClickListener { tapChore(ch, box, null) } }
+                cell.addView(box, FrameLayout.LayoutParams(dp(30), dp(30), Gravity.CENTER))
+                row.addView(cell, lp(colW, dp(40)))
+            }
+            card.addView(row, lp(MATCH, WRAP))
+        }
+        if (lines.size > maxLines) card.addView(text("+${lines.size - maxLines} more", 13f, 0xFF6B7080.toInt()))
+
+        // Up for grabs
+        val grabs = Chores.grabs(this)
+        if (grabs.isNotEmpty()) {
+            card.addView(text("\uD83D\uDE4B UP FOR GRABS", 12f, 0xFF7C5CFF.toInt(), bold = true).apply { letterSpacing = 0.04f },
+                lp(MATCH, WRAP).apply { topMargin = dp(6) })
+            grabs.take(4).forEach { ch ->
+                val row = chartRow(ch.title.trim(), ch.cents, priceW)
+                val by = Chores.claimedBy(this, ch.id)
+                val isDone = ch.id in done
+                val cell = FrameLayout(this)
+                val v: TextView = if (isDone && by.isNotEmpty()) {
+                    text(by.take(1).uppercase(), 15f, Color.WHITE, bold = true, gravity = Gravity.CENTER).apply {
+                        background = rounded(Chores.color(this@HomeActivity, by), dpf(15f))
+                    }.also { cell.addView(it, FrameLayout.LayoutParams(dp(30), dp(30), Gravity.CENTER)) }
+                } else {
+                    text("I'll do it", 13f, Color.WHITE, bold = true, gravity = Gravity.CENTER).apply {
+                        background = rounded(0xFF7C5CFF.toInt(), dpf(14f)); setPadding(dp(10), dp(4), dp(10), dp(4))
+                    }.also { cell.addView(it, FrameLayout.LayoutParams(WRAP, WRAP, Gravity.CENTER)) }
+                }
+                cell.setOnClickListener { if (isDone) tapChore(ch, v, null) else askWho(ch, v) }
+                row.addView(cell, lp(colW * kids.size, dp(40)))
+                card.addView(row, lp(MATCH, WRAP))
+            }
+        }
+        board.addView(card, lp(MATCH, WRAP))
     }
 
-    /** One chore line. claimedBy: for up-for-grabs chores, who did it. */
-    private fun choreRow(ch: Chores.Chore, isDone: Boolean, claimedBy: String?): View {
-        val row = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(4), dp(7), dp(2), dp(7))
-        }
-        val tick = if (claimedBy != null) Chores.color(this, claimedBy) else 0xFF22B573.toInt()
-        val box = text(if (isDone) (claimedBy?.take(1)?.uppercase() ?: "\u2713") else "", 15f, Color.WHITE, bold = true, gravity = Gravity.CENTER).apply {
-            background = if (isDone) rounded(tick, dpf(14f)) else rounded(Color.WHITE, dpf(14f), dp(2), 0xFFB8BCCB.toInt())
-        }
-        row.addView(box, lp(dp(28), dp(28)))
-        val label = ch.title.replaceFirstChar { it.uppercase() } + (if (claimedBy != null) "  \u00B7 $claimedBy" else "")
-        row.addView(text(label, 15f, if (isDone) 0xFF9AA0AE.toInt() else 0xFF1F2333.toInt(), bold = !isDone).apply {
-            if (isDone) paintFlags = paintFlags or android.graphics.Paint.STRIKE_THRU_TEXT_FLAG
+    /** The left part of a chart line: chore name and price. Kid cells get added after. */
+    private fun chartRow(title: String, cents: Int, priceW: Int): LinearLayout {
+        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        row.addView(text(title.replaceFirstChar { it.uppercase() }, 15f, 0xFF1F2333.toInt(), bold = true).apply {
             maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END
-        }, lp(0, WRAP, 1f).apply { marginStart = dp(8) })
-        if (ch.cents > 0) row.addView(text(Chores.money(ch.cents), 13f, if (isDone) 0xFF9AA0AE.toInt() else 0xFF15803D.toInt(), bold = true).apply {
-            background = rounded(if (isDone) 0xFFF0F1F4.toInt() else 0xFFDCFCE7.toInt(), dpf(10f))
-            setPadding(dp(7), dp(2), dp(7), dp(2))
-        }, lp(WRAP, WRAP).apply { marginStart = dp(4) })
-        row.setOnClickListener {
-            if (ch.kid == Chores.ANYONE && !isDone) askWho(ch, box) else tapChore(ch, box, null)
-        }
+        }, lp(0, WRAP, 1f))
+        if (priceW > 0) row.addView(text(if (cents > 0) Chores.money(cents) else "", 13f, 0xFF15803D.toInt(), bold = true, gravity = Gravity.END or Gravity.CENTER_VERTICAL).apply {
+            setPadding(0, 0, dp(4), 0)
+        }, lp(priceW, WRAP))
         return row
     }
 
@@ -469,7 +484,7 @@ class HomeActivity : AppCompatActivity() {
     private fun flyCoins(kid: String, start: Pair<Float, Float>, cents: Int, before: Int) {
         val target = totals[kid]
         if (target == null) { showEarned.remove(kid); fillBoard(); return }
-        val end = locIn(target).let { (x, y) -> Pair(x + dpf(14f), y + target.height / 2f) }
+        val end = locIn(target).let { (x, y) -> Pair(x + target.width / 2f, y + target.height / 2f) }
         val size = dp(34)
         // "+$0.50" rises from the chore
         val plus = text("+" + Chores.money(cents), 20f, 0xFF15803D.toInt(), bold = true).apply {
@@ -513,13 +528,12 @@ class HomeActivity : AppCompatActivity() {
         val t = totals[kid] ?: return
         android.animation.ValueAnimator.ofInt(from, to).apply {
             duration = 500
-            addUpdateListener { t.text = "\uD83D\uDCB0 " + Chores.money(it.animatedValue as Int) }
+            addUpdateListener { t.text = Chores.money(it.animatedValue as Int) }
             start()
         }
         t.animate().scaleX(1.35f).scaleY(1.35f).setDuration(160).withEndAction {
             t.animate().scaleX(1f).scaleY(1f).setDuration(260).setInterpolator(android.view.animation.OvershootInterpolator(3f)).start()
         }.start()
-        t.pivotX = 0f
     }
 
     private fun open(launch: Intent) {
