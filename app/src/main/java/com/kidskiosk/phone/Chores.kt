@@ -16,6 +16,9 @@ object Chores {
         fun isOn(d: LocalDate): Boolean = days and (1 shl (d.dayOfWeek.value % 7)) != 0
     }
 
+    /** kid value for a chore anyone can do ("up for grabs"). */
+    const val ANYONE = "*"
+
     const val EVERY_DAY = 0b1111111
     const val WEEKDAYS = 0b0111111   // Sunday to Friday
 
@@ -69,20 +72,46 @@ object Chores {
         return all(c).filter { it.kid.equals(kid, ignoreCase = true) && it.isOn(d) }
     }
 
+    /** Today's up-for-grabs chores. */
+    fun grabs(c: Context): List<Chore> = today(c, ANYONE)
+
+    // ── Who did each up-for-grabs chore today ──
+    private fun claimKey() = "claims_" + LocalDate.now()
+    fun claims(c: Context): JSONObject = runCatching { JSONObject(p(c).getString(claimKey(), "{}")) }.getOrDefault(JSONObject())
+    fun claimedBy(c: Context, id: Long): String = claims(c).optString(id.toString(), "")
+
+    // ── Each kid's color (#RRGGBB), set by the parent ──
+    private val PALETTE = intArrayOf(0xFFFF6B9A.toInt(), 0xFF4D96FF.toInt(), 0xFFFFB84C.toInt(), 0xFF6BCB77.toInt(), 0xFFB980F0.toInt(), 0xFF00C2CB.toInt())
+    fun colorsJson(c: Context): JSONObject = runCatching { JSONObject(p(c).getString("kid_colors", "{}")) }.getOrDefault(JSONObject())
+    fun setColors(c: Context, j: JSONObject) { p(c).edit().putString("kid_colors", j.toString()).apply() }
+    fun color(c: Context, kid: String): Int {
+        val hex = colorsJson(c).optString(kid.lowercase(), "")
+        runCatching { if (hex.isNotEmpty()) return android.graphics.Color.parseColor(hex) }
+        val i = kids(c).indexOfFirst { it.equals(kid, ignoreCase = true) }.coerceAtLeast(0)
+        return PALETTE[i % PALETTE.size]
+    }
+
     // ── Ticks for today ──
     private fun doneKey() = "done_" + LocalDate.now()
     fun done(c: Context): Set<Long> =
         (p(c).getString(doneKey(), "") ?: "").split(",").mapNotNull { it.toLongOrNull() }.toSet()
     /** Checks a chore off (or back on). Returns true when it is now done. Pays (or takes back) its price. */
-    fun toggle(c: Context, id: Long): Boolean {
+    fun toggle(c: Context, id: Long, by: String? = null): Boolean {
         val d = done(c).toMutableSet()
         val nowDone = !d.remove(id)
         if (nowDone) d.add(id)
-        all(c).firstOrNull { it.id == id }?.let { ch -> if (ch.cents > 0) addEarned(c, ch.kid, if (nowDone) ch.cents else -ch.cents) }
+        val claims = claims(c)
+        val ch = all(c).firstOrNull { it.id == id }
+        if (ch != null) {
+            // Up for grabs: the money goes to (or comes back from) whoever did it
+            val who = if (ch.kid == ANYONE) (if (nowDone) by.orEmpty() else claims.optString(id.toString(), "")) else ch.kid
+            if (ch.kid == ANYONE) { if (nowDone) claims.put(id.toString(), who) else claims.remove(id.toString()) }
+            if (ch.cents > 0 && who.isNotEmpty()) addEarned(c, who, if (nowDone) ch.cents else -ch.cents)
+        }
         val e = p(c).edit()
         // drop older days' ticks
-        p(c).all.keys.filter { it.startsWith("done_") && it != doneKey() }.forEach { e.remove(it) }
-        e.putString(doneKey(), d.joinToString(",")).apply()
+        p(c).all.keys.filter { (it.startsWith("done_") && it != doneKey()) || (it.startsWith("claims_") && it != claimKey()) }.forEach { e.remove(it) }
+        e.putString(doneKey(), d.joinToString(",")).putString(claimKey(), claims.toString()).apply()
         return nowDone
     }
 

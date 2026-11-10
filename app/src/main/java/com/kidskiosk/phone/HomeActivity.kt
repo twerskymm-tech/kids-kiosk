@@ -70,6 +70,7 @@ class HomeActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         window.statusBarColor = Color.BLACK
         window.navigationBarColor = Color.BLACK
+        window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() { /* this is home: nowhere to go back to */ }
         })
@@ -147,7 +148,7 @@ class HomeActivity : AppCompatActivity() {
             format12Hour = "EEEE, MMMM d"; format24Hour = "EEEE, MMMM d"
         }, lp(MATCH, WRAP))
 
-        board = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        board = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         col.addView(board, lp(MATCH, WRAP).apply { topMargin = dp(14) })
 
         grid = TileGrid(this)
@@ -234,6 +235,15 @@ class HomeActivity : AppCompatActivity() {
             minHeight = 0; minimumHeight = 0; minWidth = 0; minimumWidth = 0
             setPadding(dp(12), 0, dp(12), 0)
             setOnClickListener { (application as App).openBluetooth() }
+        }, lp(WRAP, dp(38)).apply { marginStart = dp(4) })
+        box.addView(Button(this).apply {
+            text = "Speakers"; isAllCaps = false; textSize = 13f
+            setTextColor(Color.WHITE)
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            background = rounded(0xFF7C5CFF.toInt(), dpf(20f))
+            minHeight = 0; minimumHeight = 0; minWidth = 0; minimumWidth = 0
+            setPadding(dp(12), 0, dp(12), 0)
+            setOnClickListener { (application as App).openSpeakers() }
         }, lp(WRAP, dp(38)).apply { marginStart = dp(4) })
         return box
     }
@@ -333,8 +343,8 @@ class HomeActivity : AppCompatActivity() {
     }
 
     /**
-     * Chores board: one card per kid with all of today's chores and what she has earned.
-     * Tap a chore to check it off (a coin flies into her total); tap again to uncheck it.
+     * Chores board: one card per kid with today's chores and what she has earned, two cards per row,
+     * plus an "Up for grabs" card. Tap a chore to check it off (a coin flies into her total); tap again to uncheck.
      */
     private fun fillBoard() {
         board.removeAllViews()
@@ -344,71 +354,109 @@ class HomeActivity : AppCompatActivity() {
         board.visibility = View.VISIBLE
         val done = Chores.done(this)
         val anyMoney = Chores.all(this).any { it.cents > 0 } || kids.any { Chores.earned(this, it) > 0 }
-        val kidColors = intArrayOf(0xFFFF6B9A.toInt(), 0xFF4D96FF.toInt(), 0xFFFFB84C.toInt(), 0xFF6BCB77.toInt())
-        kids.forEachIndexed { i, kid ->
-            val color = kidColors[i % kidColors.size]
-            val card = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                setPadding(dp(10), dp(10), dp(10), dp(8))
-                background = rounded(0xF2FFFFFF.toInt(), dpf(18f))
-            }
+        val cards = mutableListOf<View>()
+        val perCard = if (kids.size > 2) 4 else 6
+        kids.forEach { kid ->
             val list = Chores.today(this, kid)
             val left = list.count { it.id !in done }
-            // Header: name and what's left on a colored strip, her money under the name
-            val head = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-                setPadding(dp(10), dp(6), dp(10), dp(6))
-                background = rounded(color, dpf(12f))
-            }
-            val nameCol = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-            nameCol.addView(text(kid, 17f, Color.WHITE, bold = true).apply { maxLines = 1 })
-            if (anyMoney) {
-                val total = text("\uD83D\uDCB0 " + Chores.money(showEarned[kid] ?: Chores.earned(this, kid)), 15f, Color.WHITE, bold = true)
-                totals[kid] = total
-                nameCol.addView(total)
-            }
-            head.addView(nameCol, lp(0, WRAP, 1f))
-            head.addView(text(when {
+            val card = choreCard(kid, Chores.color(this, kid), when {
                 list.isEmpty() -> ""
                 left == 0 -> "\u2B50 Done!"
                 else -> "$left left"
-            }, 14f, Color.WHITE, bold = true))
-            card.addView(head, lp(MATCH, WRAP))
+            }, if (anyMoney) kid else null)
             if (list.isEmpty()) card.addView(text("No chores today", 15f, 0xFF6B7080.toInt()), lp(MATCH, WRAP).apply { topMargin = dp(8); bottomMargin = dp(4) })
-            list.take(6).forEach { ch ->
-                val isDone = ch.id in done
-                val row = LinearLayout(this).apply {
-                    orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-                    setPadding(dp(4), dp(7), dp(2), dp(7))
-                }
-                val box = text(if (isDone) "\u2713" else "", 17f, Color.WHITE, bold = true, gravity = Gravity.CENTER).apply {
-                    background = if (isDone) rounded(0xFF22B573.toInt(), dpf(14f)) else rounded(Color.WHITE, dpf(14f), dp(2), 0xFFB8BCCB.toInt())
-                }
-                row.addView(box, lp(dp(28), dp(28)))
-                row.addView(text(ch.title.replaceFirstChar { it.uppercase() }, 15f, if (isDone) 0xFF9AA0AE.toInt() else 0xFF1F2333.toInt(), bold = !isDone).apply {
-                    if (isDone) paintFlags = paintFlags or android.graphics.Paint.STRIKE_THRU_TEXT_FLAG
-                    maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END
-                }, lp(0, WRAP, 1f).apply { marginStart = dp(8) })
-                if (ch.cents > 0) row.addView(text(Chores.money(ch.cents), 13f, if (isDone) 0xFF9AA0AE.toInt() else 0xFF15803D.toInt(), bold = true).apply {
-                    background = rounded(if (isDone) 0xFFF0F1F4.toInt() else 0xFFDCFCE7.toInt(), dpf(10f))
-                    setPadding(dp(7), dp(2), dp(7), dp(2))
-                }, lp(WRAP, WRAP).apply { marginStart = dp(4) })
-                row.setOnClickListener { tapChore(ch, box) }
-                card.addView(row, lp(MATCH, WRAP))
+            list.take(perCard).forEach { ch -> card.addView(choreRow(ch, ch.id in done, null), lp(MATCH, WRAP)) }
+            if (list.size > perCard) card.addView(text("+${list.size - perCard} more", 13f, 0xFF6B7080.toInt()))
+            cards += card
+        }
+        val grabs = Chores.grabs(this)
+        if (grabs.isNotEmpty()) {
+            val open = grabs.count { it.id !in done }
+            val card = choreCard("\uD83D\uDE4B Up for grabs", 0xFF7C5CFF.toInt(), if (open == 0) "All taken" else "$open open", null)
+            grabs.take(perCard).forEach { ch ->
+                val by = Chores.claimedBy(this, ch.id)
+                card.addView(choreRow(ch, ch.id in done, by.ifEmpty { null }), lp(MATCH, WRAP))
             }
-            if (list.size > 6) card.addView(text("+${list.size - 6} more", 13f, 0xFF6B7080.toInt()))
-            board.addView(card, lp(0, WRAP, 1f).apply { if (i > 0) marginStart = dp(10) })
+            cards += card
+        }
+        // Two cards per row; an odd one out takes the whole row
+        cards.chunked(2).forEach { pair ->
+            val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+            pair.forEachIndexed { i, v -> row.addView(v, lp(0, WRAP, 1f).apply { if (i > 0) marginStart = dp(10) }) }
+            board.addView(row, lp(MATCH, WRAP).apply { if (board.childCount > 0) topMargin = dp(10) })
         }
     }
 
-    private fun tapChore(ch: Chores.Chore, from: View) {
-        val before = Chores.earned(this, ch.kid)
-        val nowDone = Chores.toggle(this, ch.id)
-        if (!nowDone || ch.cents <= 0) { fillBoard(); return }
+    private fun choreCard(title: String, color: Int, right: String, moneyKid: String?): LinearLayout {
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(10), dp(10), dp(10), dp(8))
+            background = rounded(0xF2FFFFFF.toInt(), dpf(18f))
+        }
+        val head = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(10), dp(6), dp(10), dp(6))
+            background = rounded(color, dpf(12f))
+        }
+        val nameCol = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        nameCol.addView(text(title, 17f, Color.WHITE, bold = true).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
+        if (moneyKid != null) {
+            val total = text("\uD83D\uDCB0 " + Chores.money(showEarned[moneyKid] ?: Chores.earned(this, moneyKid)), 15f, Color.WHITE, bold = true)
+            totals[moneyKid] = total
+            nameCol.addView(total)
+        }
+        head.addView(nameCol, lp(0, WRAP, 1f))
+        head.addView(text(right, 14f, Color.WHITE, bold = true))
+        card.addView(head, lp(MATCH, WRAP))
+        return card
+    }
+
+    /** One chore line. claimedBy: for up-for-grabs chores, who did it. */
+    private fun choreRow(ch: Chores.Chore, isDone: Boolean, claimedBy: String?): View {
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(4), dp(7), dp(2), dp(7))
+        }
+        val tick = if (claimedBy != null) Chores.color(this, claimedBy) else 0xFF22B573.toInt()
+        val box = text(if (isDone) (claimedBy?.take(1)?.uppercase() ?: "\u2713") else "", 15f, Color.WHITE, bold = true, gravity = Gravity.CENTER).apply {
+            background = if (isDone) rounded(tick, dpf(14f)) else rounded(Color.WHITE, dpf(14f), dp(2), 0xFFB8BCCB.toInt())
+        }
+        row.addView(box, lp(dp(28), dp(28)))
+        val label = ch.title.replaceFirstChar { it.uppercase() } + (if (claimedBy != null) "  \u00B7 $claimedBy" else "")
+        row.addView(text(label, 15f, if (isDone) 0xFF9AA0AE.toInt() else 0xFF1F2333.toInt(), bold = !isDone).apply {
+            if (isDone) paintFlags = paintFlags or android.graphics.Paint.STRIKE_THRU_TEXT_FLAG
+            maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END
+        }, lp(0, WRAP, 1f).apply { marginStart = dp(8) })
+        if (ch.cents > 0) row.addView(text(Chores.money(ch.cents), 13f, if (isDone) 0xFF9AA0AE.toInt() else 0xFF15803D.toInt(), bold = true).apply {
+            background = rounded(if (isDone) 0xFFF0F1F4.toInt() else 0xFFDCFCE7.toInt(), dpf(10f))
+            setPadding(dp(7), dp(2), dp(7), dp(2))
+        }, lp(WRAP, WRAP).apply { marginStart = dp(4) })
+        row.setOnClickListener {
+            if (ch.kid == Chores.ANYONE && !isDone) askWho(ch, box) else tapChore(ch, box, null)
+        }
+        return row
+    }
+
+    /** Up for grabs: whoever did it picks her name. */
+    private fun askWho(ch: Chores.Chore, from: View) {
+        val kids = Chores.kids(this)
+        if (kids.size == 1) { tapChore(ch, from, kids[0]); return }
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Who did \"${ch.title}\"?")
+            .setItems(kids.toTypedArray()) { _, i -> tapChore(ch, from, kids[i]) }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun tapChore(ch: Chores.Chore, from: View, by: String?) {
+        val who = if (ch.kid == Chores.ANYONE) by ?: Chores.claimedBy(this, ch.id) else ch.kid
+        val before = Chores.earned(this, who)
+        val nowDone = Chores.toggle(this, ch.id, by)
+        if (!nowDone || ch.cents <= 0 || who.isEmpty()) { fillBoard(); return }
         val start = locIn(from).let { (x, y) -> Pair(x + from.width / 2f, y + from.height / 2f) }
-        showEarned[ch.kid] = before
+        showEarned[who] = before
         fillBoard()
-        board.post { flyCoins(ch.kid, start, ch.cents, before) }
+        board.post { flyCoins(who, start, ch.cents, before) }
     }
 
     private fun locIn(v: View): Pair<Float, Float> {

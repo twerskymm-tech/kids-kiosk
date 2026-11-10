@@ -28,12 +28,51 @@ class App : Application() {
         super.onCreate()
         Kiosk.apply(this)
         val screen = object : BroadcastReceiver() {
-            override fun onReceive(c: Context, i: Intent) { check() }
+            override fun onReceive(c: Context, i: Intent) {
+                if (i.action == Intent.ACTION_SCREEN_OFF) {
+                    // Screen turned off: 40 seconds later the phone is back on the home screen (unless on a call)
+                    handler.removeCallbacks(homeAfterOff); handler.postDelayed(homeAfterOff, 40_000L)
+                } else {
+                    handler.removeCallbacks(homeAfterOff)
+                    check()
+                }
+            }
         }
         registerReceiver(screen, IntentFilter().apply {
-            addAction(Intent.ACTION_SCREEN_ON); addAction(Intent.ACTION_USER_PRESENT)
+            addAction(Intent.ACTION_SCREEN_ON); addAction(Intent.ACTION_USER_PRESENT); addAction(Intent.ACTION_SCREEN_OFF)
         })
+        Kiosk.keepScreenOn(this)
         handler.post(tick)
+    }
+
+    private val homeAfterOff = Runnable {
+        val inCall = System.currentTimeMillis() - HomeActivity.lastCallAt < 90 * 60_000L
+        if (!inCall && System.currentTimeMillis() >= Prefs.parentUntil(this)) { endBluetooth(); bringHome() }
+    }
+
+    /**
+     * Speakers: opens the phone's "where does the sound play" picker, where Samsung lets you tick
+     * more than one Bluetooth speaker at once. Falls back to the Bluetooth page.
+     */
+    fun openSpeakers() {
+        bluetoothUntil = System.currentTimeMillis() + 3 * 60_000L
+        Kiosk.apply(this)
+        val playing = runCatching {
+            val am = getSystemService(AUDIO_SERVICE) as android.media.AudioManager
+            if (am.isMusicActive) Kiosk.allowedApps(this).firstOrNull { it.contains("24") || it.contains("music") } else null
+        }.getOrNull() ?: packageName
+        val opened = runCatching {
+            // Android 13+: the system output picker
+            sendBroadcast(Intent("com.android.systemui.action.LAUNCH_MEDIA_OUTPUT_DIALOG")
+                .setPackage("com.android.systemui").putExtra("package_name", playing))
+            true
+        }.getOrDefault(false)
+        if (!opened || android.os.Build.VERSION.SDK_INT < 33) runCatching {
+            startActivity(Intent("com.android.settings.panel.action.MEDIA_OUTPUT")
+                .putExtra("com.android.settings.panel.extra.PACKAGE_NAME", playing)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        }.onFailure { openBluetooth(); return }
+        handler.removeCallbacks(btWatch); handler.postDelayed(btWatch, 2000L)
     }
 
     fun check() {

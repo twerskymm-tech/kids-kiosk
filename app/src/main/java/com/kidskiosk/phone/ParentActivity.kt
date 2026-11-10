@@ -373,7 +373,7 @@ class ParentActivity : AppCompatActivity() {
         val all = Chores.all(this)
         if (all.isEmpty()) { choreList.addView(text("No chores yet.", 14f, muted), lp(MATCH, WRAP).apply { topMargin = dp(6) }); return }
         for (kid in all.map { it.kid }.distinct()) {
-            choreList.addView(text(kid, 15f, ink, bold = true), lp(MATCH, WRAP).apply { topMargin = dp(10) })
+            choreList.addView(text(if (kid == Chores.ANYONE) "Up for grabs" else kid, 15f, ink, bold = true), lp(MATCH, WRAP).apply { topMargin = dp(10) })
             all.filter { it.kid == kid }.forEach { ch ->
                 val r = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
                 val price = if (ch.cents > 0) "  " + Chores.money(ch.cents) else ""

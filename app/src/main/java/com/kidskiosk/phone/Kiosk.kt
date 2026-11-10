@@ -108,6 +108,12 @@ object Kiosk {
         sp.edit().putString("held_pkg", if (hold) pkg else "").apply()
     }
 
+    /** The screen stays on until someone presses the power button. */
+    fun keepScreenOn(c: Context) {
+        if (!isOwner(c) || Build.VERSION.SDK_INT < 28) return
+        runCatching { dpm(c).setSystemSetting(admin(c), Settings.System.SCREEN_OFF_TIMEOUT, Int.MAX_VALUE.toString()) }
+    }
+
     /** Brightness 0–255 (owner can change it without asking). */
     fun setBrightness(c: Context, v: Int): Boolean {
         if (!isOwner(c) || Build.VERSION.SDK_INT < 28) return false
