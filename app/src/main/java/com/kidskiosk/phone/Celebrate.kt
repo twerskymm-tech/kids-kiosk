@@ -78,6 +78,55 @@ class ConfettiView(c: Context, private val colors: IntArray) : View(c) {
 
 /** A short happy tune made on the phone (no sound files needed). */
 object Cheer {
+    /** A sleepy snore: a soft buzzy breath in and out (lower and longer for the moon). */
+    fun snore(big: Boolean) = pcm(if (big) 1.9 else 1.3) { t, total ->
+        val f = if (big) 82.0 else 150.0
+        val breath = sin(PI * t / total).let { it * it }
+        val buzz = ((t * f) % 1.0) * 2 - 1                         // sawtooth
+        val flutter = 0.6 + 0.4 * sin(2 * PI * (if (big) 22.0 else 30.0) * t)
+        (buzz * flutter * breath * 0.22 + (Random.nextDouble() * 2 - 1) * breath * 0.05)
+    }
+
+    /** A quick rising whoosh with a little ding, for a star flying away. */
+    fun whoosh() = pcm(0.55) { t, _ ->
+        val f = 700 + 1400 * (t / 0.55)
+        val env = exp(-t * 6)
+        val ding = if (t > 0.3) sin(2 * PI * 1975.5 * (t - 0.3)) * exp(-(t - 0.3) * 12) * 0.25 else 0.0
+        sin(2 * PI * f * t) * env * 0.18 + ding
+    }
+
+    private fun pcm(seconds: Double, wave: (Double, Double) -> Double) {
+        Thread {
+            runCatching {
+                val rate = 44100
+                val n = (seconds * rate).toInt()
+                // a gentle low-pass keeps the buzz soft
+                var lp = 0.0
+                val data = ShortArray(n) { i ->
+                    val t = i.toDouble() / rate
+                    lp += (wave(t, seconds) - lp) * 0.35
+                    (lp.coerceIn(-1.0, 1.0) * 32000).toInt().toShort()
+                }
+                play(data, rate)
+            }
+        }.start()
+    }
+
+    private fun play(pcm: ShortArray, rate: Int) {
+        val track = AudioTrack.Builder()
+            .setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_GAME)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build())
+            .setAudioFormat(AudioFormat.Builder().setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                .setSampleRate(rate).setChannelMask(AudioFormat.CHANNEL_OUT_MONO).build())
+            .setBufferSizeInBytes(pcm.size * 2)
+            .setTransferMode(AudioTrack.MODE_STATIC)
+            .build()
+        track.write(pcm, 0, pcm.size)
+        track.play()
+        Thread.sleep(pcm.size * 1000L / rate + 200)
+        track.release()
+    }
+
     fun play(lucky: Boolean = false) {
         Thread {
             runCatching {

@@ -93,9 +93,6 @@ def build():
     b += '<text x="160" y="296" font-size="13" opacity="0.7">z</text><text x="146" y="276" font-size="17" opacity="0.8">z</text><text x="126" y="252" font-size="23" opacity="0.9">Z</text></g>'
 
     # little smiling stars
-    b += face_star(70, 330, 15, rot=-12)
-    b += face_star(122, 412, 11, rot=10, color="#FFD1E8")
-    b += face_star(46, 470, 9, rot=5, color="#C9F2FF")
 
     # clouds
     b += cloud(96, 520, 1.0, "#9F95E6", 0.95)
