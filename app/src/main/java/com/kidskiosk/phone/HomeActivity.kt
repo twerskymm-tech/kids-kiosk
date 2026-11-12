@@ -51,6 +51,7 @@ class HomeActivity : AppCompatActivity() {
     private lateinit var lockLayer: LinearLayout
     private lateinit var lockFrame: FrameLayout
     private lateinit var lockBg: ImageView
+    private lateinit var nightSky: NightSky
     private var shownScene = ""
     private lateinit var lockTitle: TextView
     private lateinit var lockSub: TextView
@@ -167,6 +168,8 @@ class HomeActivity : AppCompatActivity() {
         lockFrame = FrameLayout(this).apply { isClickable = true; visibility = View.GONE }
         lockBg = ImageView(this).apply { scaleType = ImageView.ScaleType.CENTER_CROP }
         lockFrame.addView(lockBg, FrameLayout.LayoutParams(MATCH, MATCH))
+        nightSky = NightSky(this).apply { visibility = View.GONE }
+        lockFrame.addView(nightSky, FrameLayout.LayoutParams(MATCH, MATCH))
         // darker at the top so the clock and times read on any picture
         lockFrame.addView(View(this).apply {
             background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
@@ -715,8 +718,9 @@ class HomeActivity : AppCompatActivity() {
         val stamp = key + Prefs.photoVersion(this)
         if (stamp == shownScene) return
         shownScene = stamp
+        nightSky.visibility = if (key == "bedtime") View.VISIBLE else View.GONE
         if (key == "bedtime") {
-            lockBg.setImageDrawable(GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(0xFF141E46.toInt(), 0xFF2B2A6B.toInt())))
+            lockBg.setImageResource(R.drawable.scene_bedtime)
             return
         }
         val own = Scenes.photoFile(this, key)
