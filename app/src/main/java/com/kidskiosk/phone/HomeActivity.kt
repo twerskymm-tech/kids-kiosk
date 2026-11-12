@@ -689,7 +689,7 @@ class HomeActivity : AppCompatActivity() {
         if (s.reason == Locks.Reason.BEDTIME) {
             showScene("bedtime")
             lockTitle.text = "Good night"
-            lockSub.text = "The phone opens again at ${timeText(this, s.until)}."
+            lockSub.text = "Opens again at ${timeText(this, s.until)}."
             zmanim.visibility = View.GONE
         } else {
             val pl = Locks.place(this)
