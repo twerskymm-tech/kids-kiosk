@@ -159,7 +159,7 @@ object Remote {
             .put("background", p(c).getString("bg_url", "") ?: "")
             .put("scenes", JSONObject().apply { Scenes.ALL.keys.forEach { k -> put(k, p(c).getString("scene_$k", "") ?: "") } })
             .put("chores", JSONArray().apply {
-                Chores.all(c).forEach { put(JSONObject().put("id", it.id).put("kid", it.kid).put("title", it.title).put("days", it.days).put("cents", it.cents)) }
+                Chores.all(c).forEach { put(Chores.toJson(it)) }
             })
         val lock = Locks.current(c)
         return JSONObject()
@@ -235,9 +235,7 @@ object Remote {
         if (s.has("chores_on")) Chores.setEnabled(c, s.optBoolean("chores_on"))
         s.optJSONArray("photos")?.let { Slides.set(c, it) }
         s.optJSONArray("chores")?.let { a ->
-            Chores.setAll(c, (0 until a.length()).map { a.getJSONObject(it) }.map {
-                Chores.Chore(it.getLong("id"), it.optString("kid"), it.optString("title"), it.optInt("days", Chores.EVERY_DAY), it.optInt("cents", 0))
-            }.filter { it.title.isNotBlank() && it.kid.isNotBlank() })
+            Chores.setAll(c, (0 until a.length()).map { Chores.fromJson(a.getJSONObject(it)) }.filter { it.title.isNotBlank() && it.kid.isNotBlank() })
         }
         Kiosk.apply(c)
     }

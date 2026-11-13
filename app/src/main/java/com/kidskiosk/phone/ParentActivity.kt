@@ -377,7 +377,7 @@ class ParentActivity : AppCompatActivity() {
             all.filter { it.kid == kid }.forEach { ch ->
                 val r = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
                 val price = if (ch.cents > 0) "  " + Chores.money(ch.cents) else ""
-                r.addView(text("${ch.title}$price  (${Chores.daysText(ch.days)})", 15f, ink), lp(0, WRAP, 1f))
+                r.addView(text("${ch.title}$price  (${if (ch.date.isNotEmpty()) "today only" else Chores.daysText(ch.days)})", 15f, ink), lp(0, WRAP, 1f))
                 r.addView(button("Remove") { Chores.remove(this, ch.id); showChores() }, lp(WRAP, dp(40)))
                 choreList.addView(r, lp(MATCH, WRAP).apply { topMargin = dp(4) })
             }

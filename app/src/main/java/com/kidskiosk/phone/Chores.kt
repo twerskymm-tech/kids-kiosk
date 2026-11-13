@@ -13,10 +13,19 @@ import kotlin.random.Random
  */
 object Chores {
     /** cents: what the kid earns for doing it (0 = nothing). */
-    data class Chore(val id: Long, val kid: String, val title: String, val days: Int, val cents: Int = 0) {
+    /** date: "YYYY-MM-DD" for a chore that is only for that one day (then days is ignored). */
+    data class Chore(val id: Long, val kid: String, val title: String, val days: Int, val cents: Int = 0, val date: String = "") {
         /** days: bit 0 = Sunday ... bit 6 = Shabbos (Saturday) */
-        fun isOn(d: LocalDate): Boolean = days and (1 shl (d.dayOfWeek.value % 7)) != 0
+        fun isOn(d: LocalDate): Boolean =
+            if (date.isNotEmpty()) date == d.toString() else days and (1 shl (d.dayOfWeek.value % 7)) != 0
+        /** A one-day chore whose day is over. */
+        fun expired(): Boolean = date.isNotEmpty() && date < LocalDate.now().toString()
     }
+
+    fun fromJson(o: JSONObject) = Chore(o.getLong("id"), o.optString("kid"), o.optString("title"), o.optInt("days", EVERY_DAY),
+        o.optInt("cents", 0), o.optString("date", ""))
+    fun toJson(ch: Chore): JSONObject = JSONObject().put("id", ch.id).put("kid", ch.kid).put("title", ch.title).put("days", ch.days)
+        .put("cents", ch.cents).apply { if (ch.date.isNotEmpty()) put("date", ch.date) }
 
     /** kid value for a chore anyone can do ("up for grabs"). */
     const val ANYONE = "*"
@@ -34,16 +43,15 @@ object Chores {
 
     fun all(c: Context): List<Chore> {
         val a = runCatching { JSONArray(p(c).getString("list", "[]")) }.getOrDefault(JSONArray())
-        return (0 until a.length()).map { a.getJSONObject(it) }.map {
-            Chore(it.getLong("id"), it.getString("kid"), it.getString("title"), it.optInt("days", EVERY_DAY), it.optInt("cents", 0))
-        }
+        // one-day chores disappear once their day is over
+        return (0 until a.length()).map { fromJson(a.getJSONObject(it)) }.filter { !it.expired() }
     }
 
     fun setAll(c: Context, list: List<Chore>) = save(c, list)
 
     private fun save(c: Context, list: List<Chore>) {
         val a = JSONArray()
-        list.forEach { a.put(JSONObject().put("id", it.id).put("kid", it.kid).put("title", it.title).put("days", it.days).put("cents", it.cents)) }
+        list.forEach { a.put(toJson(it)) }
         p(c).edit().putString("list", a.toString()).apply()
     }
 
