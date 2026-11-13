@@ -114,10 +114,21 @@ object Cheer {
         sin(2 * PI * f * t) * env * 0.05 + ding
     }
 
-    /** A soft "shhhh" (hissy breath), for the house turning its light off. */
-    fun shh() = pcm(1.4, smooth = 0.9) { t, total ->
-        val env = sin(PI * (t / total)).let { it * it }
-        (Random.nextDouble() * 2 - 1) * env * 0.05
+    /** Lights out: a soft switch click, then a few music-box notes saying goodnight. */
+    fun lullaby() {
+        // (start time in seconds, frequency) – a gentle falling tune
+        val notes = listOf(0.25 to 1318.5, 0.6 to 1046.5, 0.95 to 784.0, 1.3 to 1046.5, 1.75 to 1174.7, 2.1 to 987.8, 2.45 to 784.0)
+        pcm(3.6, smooth = 1.0) { t, _ ->
+            var v = if (t < 0.012) (Random.nextDouble() * 2 - 1) * 0.06 * (1 - t / 0.012) else 0.0   // click
+            notes.forEach { (st, f) ->
+                if (t >= st) {
+                    val u = t - st
+                    val env = exp(-u * 3.2) * (1 - exp(-u * 400))
+                    v += (sin(2 * PI * f * u) + 0.35 * sin(2 * PI * 2 * f * u) * exp(-u * 6) + 0.12 * sin(2 * PI * 3 * f * u) * exp(-u * 10)) * env * 0.035
+                }
+            }
+            v
+        }
     }
 
     /** A tiny pop, for the moon changing its hat. */

@@ -100,7 +100,7 @@ class NightSky(c: Context) : View(c) {
                     repeat(10) { dust += Dust(240f, 238f, rnd.nextFloat() * 60f - 30f, rnd.nextFloat() * 50f - 30f, now) }
                 }
                 hypot(x - 268f, y - 610f) < 38f -> {
-                    lightsOff = now; shh += now; Cheer.shh()
+                    lightsOff = now; shh += now; Cheer.lullaby()
                 }
                 hypot(x - 228f, y - 330f) < 80f -> { snore(196f, 300f, now, big = true); Cheer.snore(big = true) }
                 hypot(x - 66f, y - 606f) < 44f -> { snore(40f, 586f, now, big = false); Cheer.snore(big = false) }
@@ -169,12 +169,13 @@ class NightSky(c: Context) : View(c) {
                 canvas.drawCircle(mapX(258.5f), mapY(612f), 0.9f * s, paint)
             }
         }
-        shh.removeAll { now - it > 2200 }
+        shh.removeAll { now - it > 3000 }
         shh.forEach { st ->
-            val p = (now - st) / 2200f
-            textPaint.textSize = 11f * s * (0.8f + 0.4f * p)
+            val p = (now - st) / 3000f
+            textPaint.textSize = 14f * s * (0.8f + 0.4f * p)
             textPaint.alpha = (255 * (if (p < 0.15f) p / 0.15f else (1 - p) / 0.85f)).toInt().coerceIn(0, 255)
-            canvas.drawText("Shhh\u2026", mapX(232f + 10f * sin(p * 6f)), mapY(586f - 50f * p), textPaint)
+            canvas.drawText("\u266A", mapX(236f + 12f * sin(p * 6f)), mapY(590f - 55f * p), textPaint)
+            canvas.drawText("\u266B", mapX(258f + 10f * sin(p * 5f + 2f)), mapY(578f - 45f * p), textPaint)
         }
         // fireflies floating over the hills
         flies.forEach { f ->
