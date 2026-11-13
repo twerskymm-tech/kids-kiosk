@@ -79,14 +79,7 @@ def build():
     b += '<path d="M197,322 l-3,-3 M203,320 l-1,-4 M209,320 l1,-4" stroke="#6B4512" stroke-width="1.4" stroke-linecap="round"/>'
     b += '<circle cx="207" cy="342" r="6" fill="#FF9AAE" opacity="0.65"/>'
     b += '<path d="M188,352 q6,6 13,2" stroke="#6B4512" stroke-width="2.2" fill="none" stroke-linecap="round"/>'
-    # nightcap sitting on the moon's top tip, flopping over to the right with a pom-pom
-    b += '<g transform="translate(-18,8) rotate(-14 240 260)">'
-    b += ('<path d="M214,276 C220,240 246,214 276,214 C300,214 314,230 318,252 C310,240 298,234 286,236 C276,240 268,250 264,262 Z" fill="#7FB6FF"/>'
-          '<path d="M236,236 C244,226 256,220 268,219 L270,230 C258,231 248,237 242,245 Z" fill="#FFFFFF" opacity="0.7"/>'
-          '<path d="M288,220 C298,224 306,232 310,242 L302,240 C298,234 292,230 284,230 Z" fill="#FFFFFF" opacity="0.7"/>'
-          '<path d="M208,282 C224,262 250,250 272,254 L270,266 C250,262 228,272 216,290 Z" fill="#FFFFFF"/>'
-          '<circle cx="320" cy="258" r="10" fill="#FFFFFF"/><circle cx="317" cy="255" r="4" fill="#E8EEFF"/>')
-    b += '</g>'
+    # (the moon's hat is drawn live by the app so it can be changed: NightSky.kt)
 
     # "z z Z" drifting up from the moon
     b += '<g font-family="Arial Rounded MT Bold, Arial, sans-serif" font-weight="700" fill="#E9E4FF">'

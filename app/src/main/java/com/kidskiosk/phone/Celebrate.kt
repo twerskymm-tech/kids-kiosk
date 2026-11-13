@@ -84,18 +84,27 @@ object Cheer {
         val breath = sin(PI * t / total).let { it * it }
         val buzz = ((t * f) % 1.0) * 2 - 1                         // sawtooth
         val flutter = 0.6 + 0.4 * sin(2 * PI * (if (big) 22.0 else 30.0) * t)
-        (buzz * flutter * breath * 0.22 + (Random.nextDouble() * 2 - 1) * breath * 0.05)
+        (buzz * flutter * breath * 0.06 + (Random.nextDouble() * 2 - 1) * breath * 0.012)
     }
 
     /** A quick rising whoosh with a little ding, for a star flying away. */
     fun whoosh() = pcm(0.55) { t, _ ->
         val f = 700 + 1400 * (t / 0.55)
         val env = exp(-t * 6)
-        val ding = if (t > 0.3) sin(2 * PI * 1975.5 * (t - 0.3)) * exp(-(t - 0.3) * 12) * 0.25 else 0.0
-        sin(2 * PI * f * t) * env * 0.18 + ding
+        val ding = if (t > 0.3) sin(2 * PI * 1975.5 * (t - 0.3)) * exp(-(t - 0.3) * 12) * 0.07 else 0.0
+        sin(2 * PI * f * t) * env * 0.05 + ding
     }
 
-    private fun pcm(seconds: Double, wave: (Double, Double) -> Double) {
+    /** A soft "shhhh" (hissy breath), for the house turning its light off. */
+    fun shh() = pcm(1.4, smooth = 0.9) { t, total ->
+        val env = sin(PI * (t / total)).let { it * it }
+        (Random.nextDouble() * 2 - 1) * env * 0.05
+    }
+
+    /** A tiny pop, for the moon changing its hat. */
+    fun pop() = pcm(0.18) { t, _ -> sin(2 * PI * (520 + 900 * t / 0.18) * t) * exp(-t * 25) * 0.08 }
+
+    private fun pcm(seconds: Double, smooth: Double = 0.35, wave: (Double, Double) -> Double) {
         Thread {
             runCatching {
                 val rate = 44100
@@ -104,7 +113,7 @@ object Cheer {
                 var lp = 0.0
                 val data = ShortArray(n) { i ->
                     val t = i.toDouble() / rate
-                    lp += (wave(t, seconds) - lp) * 0.35
+                    lp += (wave(t, seconds) - lp) * smooth
                     (lp.coerceIn(-1.0, 1.0) * 32000).toInt().toShort()
                 }
                 play(data, rate)

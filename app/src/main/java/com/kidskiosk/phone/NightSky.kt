@@ -19,7 +19,8 @@ import kotlin.random.Random
  * Live layer over the bedtime picture: stars that twinkle, a few sparkles that pulse, fireflies that
  * float over the hills, and now and then a shooting star. Positions are fractions of the picture
  * (art/bedtime.py, 360x780). Runs at about 20 frames a second and only while it is on screen.
- * Touch: the moon and the bunny snore with floating Zs; a big star flies to a new spot.
+ * Touch: the moon and the bunny snore with floating Zs; a big star flies to a new spot; the moon's hat
+ * changes; the house turns its light off with a "shhh".
  */
 class NightSky(c: Context) : View(c) {
     private class Star(val fx: Float, val fy: Float, val r: Float, val base: Float, val speed: Float, val phase: Float)
@@ -53,6 +54,9 @@ class NightSky(c: Context) : View(c) {
         color = 0xFFE9E4FF.toInt(); typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
     }
     private var shoot: Shoot? = null
+    private var hatPop = 0L          // when the hat last changed (for a little bounce)
+    private var lightsOff = 0L       // when the house window went dark
+    private val shh = mutableListOf<Long>()
     private var nextShoot = SystemClock.uptimeMillis() + 4000
 
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -62,7 +66,7 @@ class NightSky(c: Context) : View(c) {
         override fun run() {
             if (!running) return
             invalidate()
-            val busy = zees.isNotEmpty() || dust.isNotEmpty() || bigs.any { it.flyStart != 0L } || shoot != null
+            val busy = hatPop != 0L || lightsOff != 0L || zees.isNotEmpty() || dust.isNotEmpty() || bigs.any { it.flyStart != 0L } || shoot != null
             postDelayed(this, if (busy) 33 else 50)
         }
     }
@@ -91,6 +95,13 @@ class NightSky(c: Context) : View(c) {
             val star = bigs.firstOrNull { it.flyStart == 0L && hypot(x - it.x, y - it.y) < maxOf(26f, it.r * 2.2f) }
             when {
                 star != null -> { fly(star, now); Cheer.whoosh() }
+                hypot(x - 238f, y - 238f) < 38f -> {
+                    hat = (hat + 1) % HATS; hatPop = now; Cheer.pop()
+                    repeat(10) { dust += Dust(240f, 238f, rnd.nextFloat() * 60f - 30f, rnd.nextFloat() * 50f - 30f, now) }
+                }
+                hypot(x - 268f, y - 610f) < 38f -> {
+                    lightsOff = now; shh += now; Cheer.shh()
+                }
                 hypot(x - 228f, y - 330f) < 80f -> { snore(196f, 300f, now, big = true); Cheer.snore(big = true) }
                 hypot(x - 66f, y - 606f) < 44f -> { snore(40f, 586f, now, big = false); Cheer.snore(big = false) }
                 else -> return false
@@ -102,7 +113,7 @@ class NightSky(c: Context) : View(c) {
     }
 
     private fun snore(x: Float, y: Float, now: Long, big: Boolean) {
-        val sizes = if (big) listOf(13f, 17f, 22f, 27f) else listOf(9f, 12f, 15f)
+        val sizes = if (big) listOf(9f, 11f, 14f) else listOf(7f, 8.5f, 10f)
         sizes.forEachIndexed { i, sz -> zees += Zee(x - i * 4f, y, sz, now + i * 280L, if (big) -26f else -18f) }
     }
 
@@ -134,6 +145,36 @@ class NightSky(c: Context) : View(c) {
         sparkles.forEachIndexed { i, (x, y, r) ->
             val tw = 0.5f + 0.5f * sin(t * 1.3f + i * 1.7f)
             sparkle(canvas, mapX(x), mapY(y), r * s * (0.6f + 0.6f * tw), (140 + 115 * tw).toInt())
+        }
+        // the moon's hat (tap it to change)
+        canvas.save()
+        canvas.translate(mapX(0f), mapY(0f)); canvas.scale(s, s)
+        if (hatPop != 0L) {
+            val p = (now - hatPop) / 450f
+            if (p >= 1f) hatPop = 0L
+            else { val k = 1f + 0.25f * sin(p * PI.toFloat()) * (1 - p); canvas.scale(k, k, 236f, 262f) }
+        }
+        canvas.translate(-18f, 8f); canvas.rotate(-14f, 240f, 260f)
+        drawHat(canvas, hat)
+        canvas.restore()
+        // the house: lights out for a few seconds, and a floating "Shhh..."
+        if (lightsOff != 0L) {
+            val p = (now - lightsOff) / 5000f
+            if (p >= 1f) lightsOff = 0L
+            else {
+                val dark = when { p < 0.06f -> p / 0.06f; p > 0.9f -> (1 - p) / 0.1f; else -> 1f }
+                paint.color = 0xFF2A2060.toInt(); paint.alpha = (255 * dark).toInt()
+                canvas.drawRect(mapX(254.5f), mapY(608.5f), mapX(268.5f), mapY(621.5f), paint)
+                paint.color = 0xFFFFF6B8.toInt(); paint.alpha = (200 * dark).toInt()
+                canvas.drawCircle(mapX(258.5f), mapY(612f), 0.9f * s, paint)
+            }
+        }
+        shh.removeAll { now - it > 2200 }
+        shh.forEach { st ->
+            val p = (now - st) / 2200f
+            textPaint.textSize = 11f * s * (0.8f + 0.4f * p)
+            textPaint.alpha = (255 * (if (p < 0.15f) p / 0.15f else (1 - p) / 0.85f)).toInt().coerceIn(0, 255)
+            canvas.drawText("Shhh\u2026", mapX(232f + 10f * sin(p * 6f)), mapY(586f - 50f * p), textPaint)
         }
         // fireflies floating over the hills
         flies.forEach { f ->
@@ -201,6 +242,75 @@ class NightSky(c: Context) : View(c) {
             paint.color = 0xFFFFFFFF.toInt(); paint.alpha = (255 * fade).toInt()
             canvas.drawCircle(hx, hy, 1.8f * s, paint)
         }
+    }
+
+    companion object {
+        const val HATS = 6
+        /** Which hat the moon wears (kept while the app runs). */
+        var hat = 0
+    }
+
+    private val conePath = Path().apply {
+        moveTo(214f, 276f); cubicTo(220f, 240f, 246f, 214f, 276f, 214f); cubicTo(300f, 214f, 314f, 230f, 318f, 252f)
+        cubicTo(310f, 240f, 298f, 234f, 286f, 236f); cubicTo(276f, 240f, 268f, 250f, 264f, 262f); close()
+    }
+    private val brimPath = Path().apply {
+        moveTo(208f, 282f); cubicTo(224f, 262f, 250f, 250f, 272f, 254f); lineTo(270f, 266f)
+        cubicTo(250f, 262f, 228f, 272f, 216f, 290f); close()
+    }
+
+    /** Draw hat number i, in picture coordinates (already moved onto the moon's tip). */
+    private fun drawHat(canvas: Canvas, i: Int) {
+        paint.style = Paint.Style.FILL; paint.shader = null
+        if (i == 5) {   // a little golden crown
+            path.reset()
+            path.moveTo(214f, 280f); path.lineTo(210f, 246f); path.lineTo(226f, 262f); path.lineTo(238f, 236f)
+            path.lineTo(250f, 260f); path.lineTo(266f, 242f); path.lineTo(266f, 274f); path.close()
+            paint.color = 0xFFFFC83D.toInt(); canvas.drawPath(path, paint)
+            paint.color = 0xFFFFE58A.toInt(); canvas.drawRect(214f, 268f, 266f, 276f, paint)
+            paint.color = 0xFFE8590C.toInt(); canvas.drawCircle(238f, 236f, 3.5f, paint)
+            paint.color = 0xFF4DABF7.toInt(); canvas.drawCircle(210f, 246f, 3f, paint); canvas.drawCircle(266f, 242f, 3f, paint)
+            paint.color = 0xFFE64980.toInt(); canvas.drawCircle(240f, 270f, 3f, paint)
+            paint.color = 0xFF51CF66.toInt(); canvas.drawCircle(226f, 271f, 2.4f, paint); canvas.drawCircle(254f, 270f, 2.4f, paint)
+            return
+        }
+        // nightcaps: color, pattern color, pom color
+        val (body, deco, pom) = when (i) {
+            1 -> Triple(0xFFFF8FB8.toInt(), 0xFFFFE066.toInt(), 0xFFFFE066.toInt())   // pink with yellow stars
+            2 -> Triple(0xFFB197FC.toInt(), 0xFFFFFFFF.toInt(), 0xFFFF8FB8.toInt())   // purple with dots
+            3 -> Triple(0xFF51CF66.toInt(), 0xFFFF6B6B.toInt(), 0xFFFFFFFF.toInt())   // green with red stripes
+            4 -> Triple(0xFFFFA94D.toInt(), 0xFFFFF3BF.toInt(), 0xFFFFFFFF.toInt())   // orange with zigzag
+            else -> Triple(0xFF7FB6FF.toInt(), 0xFFFFFFFF.toInt(), 0xFFFFFFFF.toInt()) // blue with white stripes
+        }
+        paint.color = body; canvas.drawPath(conePath, paint)
+        canvas.save(); canvas.clipPath(conePath)
+        paint.color = deco
+        when (i) {
+            0, 3 -> { paint.alpha = if (i == 0) 180 else 255; for (k in 0..4) { canvas.save(); canvas.rotate(35f, 260f, 240f); canvas.drawRect(200f + k * 24f, 180f, 210f + k * 24f, 300f, paint); canvas.restore() } }
+            1 -> listOf(242f to 244f, 262f to 228f, 286f to 224f, 302f to 238f, 254f to 252f).forEach { (x, y) -> tinyStar(canvas, x, y, 5f) }
+            2 -> listOf(236f to 250f, 252f to 232f, 270f to 224f, 292f to 222f, 306f to 240f, 260f to 246f, 282f to 236f).forEach { (x, y) -> canvas.drawCircle(x, y, 3.2f, paint) }
+            4 -> { paint.style = Paint.Style.STROKE; paint.strokeWidth = 3f; paint.strokeJoin = Paint.Join.ROUND
+                for (row in 0..1) { path.reset(); path.moveTo(200f, 250f - row * 18f); var x = 200f; var up = true
+                    while (x < 330f) { x += 9f; path.lineTo(x, (if (up) 242f else 250f) - row * 18f); up = !up }
+                    canvas.drawPath(path, paint) }
+                paint.style = Paint.Style.FILL }
+        }
+        canvas.restore()
+        paint.alpha = 255
+        paint.color = 0xFFFFFFFF.toInt(); canvas.drawPath(brimPath, paint)
+        paint.color = pom; canvas.drawCircle(320f, 258f, 10f, paint)
+        paint.color = 0x33000000; canvas.drawCircle(323f, 261f, 5f, paint)
+    }
+
+    private fun tinyStar(canvas: Canvas, cx: Float, cy: Float, r: Float) {
+        path.reset()
+        for (k in 0 until 10) {
+            val rad = if (k % 2 == 0) r else r * 0.45f
+            val a = Math.toRadians((-90 + k * 36).toDouble())
+            val px = cx + rad * cos(a).toFloat(); val py = cy + rad * sin(a).toFloat()
+            if (k == 0) path.moveTo(px, py) else path.lineTo(px, py)
+        }
+        path.close(); canvas.drawPath(path, paint)
     }
 
     /** A chubby star with sleepy eyes, a smile and pink cheeks. */
