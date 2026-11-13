@@ -57,6 +57,10 @@ class NightSky(c: Context) : View(c) {
     private var hatPop = 0L          // when the hat last changed (for a little bounce)
     private var lightsOff = 0L       // when the house window went dark
     private val shh = mutableListOf<Long>()
+    private var peekAt = 0L          // tapped the peekaboo cloud: show its face now
+    private val born = SystemClock.uptimeMillis()
+    private var driftPush = 0L       // tapped the drifting cloud: a little puff of speed
+    private var driftOffset = 0f
     private var nextShoot = SystemClock.uptimeMillis() + 4000
 
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -66,8 +70,7 @@ class NightSky(c: Context) : View(c) {
         override fun run() {
             if (!running) return
             invalidate()
-            val busy = hatPop != 0L || lightsOff != 0L || zees.isNotEmpty() || dust.isNotEmpty() || bigs.any { it.flyStart != 0L } || shoot != null
-            postDelayed(this, if (busy) 33 else 50)
+            postDelayed(this, 40)
         }
     }
 
@@ -95,14 +98,16 @@ class NightSky(c: Context) : View(c) {
             val star = bigs.firstOrNull { it.flyStart == 0L && hypot(x - it.x, y - it.y) < maxOf(26f, it.r * 2.2f) }
             when {
                 star != null -> { fly(star, now); Cheer.whoosh() }
-                hypot(x - 238f, y - 238f) < 38f -> {
+                hypot(x - 238f, y - 274f) < 38f -> {
                     hat = (hat + 1) % HATS; hatPop = now; Cheer.pop()
-                    repeat(10) { dust += Dust(240f, 238f, rnd.nextFloat() * 60f - 30f, rnd.nextFloat() * 50f - 30f, now) }
+                    repeat(10) { dust += Dust(240f, 274f, rnd.nextFloat() * 60f - 30f, rnd.nextFloat() * 50f - 30f, now) }
                 }
                 hypot(x - 268f, y - 610f) < 38f -> {
                     lightsOff = now; shh += now; Cheer.lullaby()
                 }
-                hypot(x - 228f, y - 330f) < 80f -> { snore(196f, 300f, now, big = true); Cheer.snore(big = true) }
+                hypot(x - 100f, y - 524f) < 46f -> { peekAt = now; Cheer.giggle() }
+                hypot(x - driftX(now), y - 506f) < 36f -> { driftPush = now; Cheer.puff() }
+                hypot(x - 228f, y - 366f) < 80f -> { snore(196f, 336f, now, big = true); Cheer.snore(big = true) }
                 hypot(x - 66f, y - 606f) < 44f -> { snore(40f, 586f, now, big = false); Cheer.snore(big = false) }
                 else -> return false
             }
@@ -122,7 +127,7 @@ class NightSky(c: Context) : View(c) {
         var nx = b.x; var ny = b.y
         for (tries in 0 until 60) {
             val x = 24f + rnd.nextFloat() * 312f; val y = 228f + rnd.nextFloat() * 250f
-            val clear = hypot(x - 232f, y - 322f) > 105f && hypot(x - b.x, y - b.y) > 70f &&
+            val clear = hypot(x - 232f, y - 358f) > 105f && hypot(x - b.x, y - b.y) > 70f &&
                 bigs.none { it !== b && hypot(x - it.x, y - it.y) < 50f } && !(y > 470f && (x < 160f || x > 250f))
             if (clear) { nx = x; ny = y; break }
         }
@@ -146,15 +151,23 @@ class NightSky(c: Context) : View(c) {
             val tw = 0.5f + 0.5f * sin(t * 1.3f + i * 1.7f)
             sparkle(canvas, mapX(x), mapY(y), r * s * (0.6f + 0.6f * tw), (140 + 115 * tw).toInt())
         }
+        // clouds: one plays peekaboo, the other drifts off one side and comes back from the other
+        canvas.save()
+        canvas.translate(mapX(0f), mapY(0f)); canvas.scale(s, s)
+        drawCloud(canvas, driftX(now), 498f, 0.75f, 0xD98D83D9.toInt())
+        sleepyFace(canvas, driftX(now) + 1f, 505f, 0.75f)
+        drawCloud(canvas, 96f, 520f, 1f, 0xF29F95E6.toInt())
+        peekaboo(canvas, now)
+        canvas.restore()
         // the moon's hat (tap it to change)
         canvas.save()
         canvas.translate(mapX(0f), mapY(0f)); canvas.scale(s, s)
         if (hatPop != 0L) {
             val p = (now - hatPop) / 450f
             if (p >= 1f) hatPop = 0L
-            else { val k = 1f + 0.25f * sin(p * PI.toFloat()) * (1 - p); canvas.scale(k, k, 236f, 262f) }
+            else { val k = 1f + 0.25f * sin(p * PI.toFloat()) * (1 - p); canvas.scale(k, k, 236f, 298f) }
         }
-        canvas.translate(-18f, 8f); canvas.rotate(-14f, 240f, 260f)
+        canvas.translate(-18f, 44f); canvas.rotate(-14f, 240f, 260f)
         drawHat(canvas, hat)
         canvas.restore()
         // the house: lights out for a few seconds, and a floating "Shhh..."
@@ -242,6 +255,78 @@ class NightSky(c: Context) : View(c) {
             paint.shader = null; paint.style = Paint.Style.FILL
             paint.color = 0xFFFFFFFF.toInt(); paint.alpha = (255 * fade).toInt()
             canvas.drawCircle(hx, hy, 1.8f * s, paint)
+        }
+    }
+
+    /** Where the drifting cloud is: slowly right, off the edge, and back in from the left (about 70 s a lap). */
+    private fun driftX(now: Long): Float {
+        if (driftPush != 0L) {
+            val p = (now - driftPush) / 1500f
+            if (p >= 1f) { driftOffset += 60f; driftPush = 0L }
+        }
+        val push = if (driftPush != 0L) 60f * ((now - driftPush) / 1500f).let { it * (2 - it) } else 0f
+        val lap = 360f + 160f
+        val x = ((now - born) / 1000f) * 7.5f + 300f + 80f + driftOffset + push
+        return (x % lap) - 80f
+    }
+
+    private fun drawCloud(canvas: Canvas, cx: Float, cy: Float, k: Float, color: Int) {
+        paint.style = Paint.Style.FILL; paint.shader = null; paint.color = color
+        canvas.drawRoundRect(cx - 46 * k, cy, cx + 54 * k, cy + 22 * k, 11 * k, 11 * k, paint)
+        listOf(Triple(-34f, 6f, 16f), Triple(-16f, -6f, 22f), Triple(8f, -12f, 26f), Triple(32f, -2f, 20f), Triple(48f, 8f, 14f))
+            .forEach { (dx, dy, r) -> canvas.drawCircle(cx + dx * k, cy + dy * k + 6 * k, r * k, paint) }
+        paint.color = 0x2EFFFFFF; canvas.drawCircle(cx + 2 * k, cy - 10 * k, 14 * k, paint)
+    }
+
+    private fun sleepyFace(canvas: Canvas, cx: Float, cy: Float, k: Float) {
+        paint.style = Paint.Style.STROKE; paint.strokeCap = Paint.Cap.ROUND; paint.strokeWidth = 1.4f
+        paint.color = 0xFF5B4E9E.toInt()
+        canvas.drawArc(cx - 9 * k, cy - 3 * k, cx - 3 * k, cy + 2 * k, 20f, 140f, false, paint)
+        canvas.drawArc(cx + 3 * k, cy - 3 * k, cx + 9 * k, cy + 2 * k, 20f, 140f, false, paint)
+        canvas.drawArc(cx - 3 * k, cy + 2 * k, cx + 3 * k, cy + 7 * k, 20f, 140f, false, paint)
+        paint.style = Paint.Style.FILL
+        paint.color = 0x66FF9AB5; canvas.drawCircle(cx - 12 * k, cy + 4 * k, 2.6f * k, paint); canvas.drawCircle(cx + 12 * k, cy + 4 * k, 2.6f * k, paint)
+    }
+
+    /** The big cloud hides its eyes with two little puffy hands, then peeks out with a big smile. */
+    private fun peekaboo(canvas: Canvas, now: Long) {
+        val cyc = 8000L
+        val t = if (peekAt != 0L && now - peekAt < 2600) 4300L + (now - peekAt)   // tapped: jump to the peek
+                else { if (peekAt != 0L) peekAt = 0L; (now - born + 2000) % cyc }
+        // open: 0 = hands over eyes, 1 = hands out to the sides
+        val open = when {
+            t < 4300 -> 0f
+            t < 4700 -> (t - 4300) / 400f
+            t < 6500 -> 1f
+            t < 6900 -> 1f - (t - 6500) / 400f
+            else -> 0f
+        }.let { it * it * (3 - 2 * it) }
+        val cx = 100f; val cy = 528f
+        val ink = 0xFF4A3F8C.toInt()
+        paint.style = Paint.Style.FILL
+        // cheeks
+        paint.color = 0x80FF9AB5.toInt(); canvas.drawCircle(cx - 17f, cy + 6f, 3.4f, paint); canvas.drawCircle(cx + 17f, cy + 6f, 3.4f, paint)
+        if (open > 0.4f) {
+            // wide happy eyes and an open smile
+            paint.color = ink; canvas.drawCircle(cx - 8f, cy, 3.2f, paint); canvas.drawCircle(cx + 8f, cy, 3.2f, paint)
+            paint.color = 0xFFFFFFFF.toInt(); canvas.drawCircle(cx - 7f, cy - 1.2f, 1.1f, paint); canvas.drawCircle(cx + 9f, cy - 1.2f, 1.1f, paint)
+            paint.color = ink; canvas.drawArc(cx - 5f, cy + 2f, cx + 5f, cy + 11f, 0f, 180f, true, paint)
+            paint.color = 0xFFFF8FA3.toInt(); canvas.drawArc(cx - 3f, cy + 6f, cx + 3f, cy + 10.5f, 0f, 180f, true, paint)
+            if (open > 0.9f) {
+                textPaint.textSize = 9f; textPaint.alpha = 230
+                canvas.drawText("boo!", cx + 26f, cy - 18f, textPaint)
+            }
+        } else {
+            // little smile while hiding
+            paint.style = Paint.Style.STROKE; paint.strokeWidth = 1.5f; paint.strokeCap = Paint.Cap.ROUND; paint.color = ink
+            canvas.drawArc(cx - 4f, cy + 3f, cx + 4f, cy + 9f, 20f, 140f, false, paint)
+            paint.style = Paint.Style.FILL
+        }
+        // the two puffy hands: over the eyes, then out to the sides
+        for (side in listOf(-1f, 1f)) {
+            val hx = cx + side * (8f + 22f * open); val hy = cy + 1f + 7f * open
+            paint.color = 0xFFB7AEF2.toInt(); canvas.drawCircle(hx, hy, 6.5f, paint)
+            paint.color = 0x33FFFFFF; canvas.drawCircle(hx - 1.5f, hy - 2f, 3f, paint)
         }
     }
 

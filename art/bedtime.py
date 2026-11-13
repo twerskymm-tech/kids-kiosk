@@ -69,6 +69,7 @@ def build():
 
     # big sleepy crescent moon with a nightcap
     mx, my, mr = 250, 330, 74
+    b += '<g transform="translate(0,36)">'   # the moon sits a bit lower, clear of the text
     b += f'<circle cx="{mx - 26}" cy="{my + 4}" r="{mr * 1.8}" fill="url(#moonglow)"/>'
     b += f'<circle cx="{mx}" cy="{my}" r="{mr}" fill="url(#moon)" mask="url(#cutmoon)"/>'
     # craters
@@ -84,12 +85,12 @@ def build():
     # "z z Z" drifting up from the moon
     b += '<g font-family="Arial Rounded MT Bold, Arial, sans-serif" font-weight="700" fill="#E9E4FF">'
     b += '<text x="160" y="296" font-size="13" opacity="0.7">z</text><text x="146" y="276" font-size="17" opacity="0.8">z</text><text x="126" y="252" font-size="23" opacity="0.9">Z</text></g>'
+    b += '</g>'
 
     # little smiling stars
 
     # clouds
-    b += cloud(96, 520, 1.0, "#9F95E6", 0.95)
-    b += cloud(300, 498, 0.75, "#8D83D9", 0.85)
+    # (the peekaboo cloud and the drifting cloud are drawn live by the app: NightSky.kt)
     b += cloud(200, 236, 0.55, "#6E66C2", 0.6)
 
     # hills, back to front

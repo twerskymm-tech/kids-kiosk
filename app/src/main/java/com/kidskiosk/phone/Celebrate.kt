@@ -79,46 +79,93 @@ class ConfettiView(c: Context, private val colors: IntArray) : View(c) {
 /** A short happy tune made on the phone (no sound files needed). */
 object Cheer {
     /** A sleepy snore: a soft buzzy breath in and out (lower and longer for the moon). */
-    fun snore(big: Boolean): Unit {
-        // a cartoon snore: a soft rumbly breath in ("hrrrr"), a short pause, then a gentle whistle out ("fyuuu")
-        val inEnd = if (big) 1.0 else 0.45
-        val outStart = inEnd + if (big) 0.2 else 0.1
-        val total = outStart + if (big) 1.0 else 0.6
-        var low = 0.0; var air = 0.0; var phase = 0.0
-        pcm(total, smooth = 1.0) { t, _ ->
+    /**
+     * A cartoon snore: a soft rumbly breath in ("hrrrr"), then a gentle "mimimimi" whistle out.
+     * The bunny's is shorter and higher.
+     */
+    fun snore(big: Boolean) {
+        val inEnd = if (big) 0.9 else 0.4
+        val outStart = inEnd + if (big) 0.15 else 0.08
+        val total = outStart + if (big) 1.1 else 0.6
+        var low = 0.0; var hum = 0.0; var humF = if (big) 105.0 else 170.0; var phase = 0.0
+        pcm(total) { t, _ ->
             val n = Random.nextDouble() * 2 - 1
-            low += (n - low) * (if (big) 0.025 else 0.06)          // deep rumble from filtered noise
-            air += (n - air) * 0.3                                  // soft breathy air
-            when {
-                t < inEnd -> {
-                    val env = sin(PI * t / inEnd).let { it * it }
-                    low * env * (if (big) 1.1 else 0.5) + air * env * 0.01
-                }
-                t < outStart -> 0.0
-                else -> {
-                    val p = (t - outStart) / (total - outStart)
-                    val env = sin(PI * p).let { it * it }
-                    val f = (if (big) 950.0 - 400.0 * p else 1500.0 - 500.0 * p) * (1 + 0.008 * sin(2 * PI * 5 * t))
-                    phase += 2 * PI * f / 44100
-                    sin(phase) * env * (if (big) 0.03 else 0.022) + air * env * 0.012
-                }
+            low += (n - low) * (if (big) 0.03 else 0.07)
+            if (t < inEnd) {
+                val env = sin(PI * t / inEnd).let { it * it }
+                humF += (Random.nextDouble() - 0.5) * 0.6                 // a wandering, not buzzing, hum
+                hum += 2 * PI * humF / RATE
+                low * env * (if (big) 0.9 else 0.45) + sin(hum) * env * (if (big) 0.012 else 0.008)
+            } else if (t < outStart) 0.0
+            else {
+                val p = (t - outStart) / (total - outStart)
+                val env = sin(PI * p).let { it * it }
+                val f = if (big) 1150.0 - 350.0 * p else 1650.0 - 400.0 * p
+                phase += 2 * PI * f / RATE
+                val mi = 0.5 - 0.5 * cos(2 * PI * (if (big) 6.5 else 8.5) * (t - outStart))   // "mi-mi-mi"
+                sin(phase) * env * mi * (if (big) 0.028 else 0.02)
             }
         }
     }
 
-    /** A quick rising whoosh with a little ding, for a star flying away. */
-    fun whoosh() = pcm(0.55) { t, _ ->
-        val f = 700 + 1400 * (t / 0.55)
-        val env = exp(-t * 6)
-        val ding = if (t > 0.3) sin(2 * PI * 1975.5 * (t - 0.3)) * exp(-(t - 0.3) * 12) * 0.07 else 0.0
-        sin(2 * PI * f * t) * env * 0.05 + ding
+    /** An airy whoosh that rises, then a little bell, for a star flying away. */
+    fun whoosh() {
+        var lowp = 0.0; var band = 0.0
+        pcm(0.75) { t, _ ->
+            val n = Random.nextDouble() * 2 - 1
+            val f = 500 + 2500 * (t / 0.45).coerceAtMost(1.0)
+            val k = 2 * sin(PI * f / RATE)
+            lowp += k * band; val high = n - lowp - 0.5 * band; band += k * high   // a sweeping band-pass
+            val env = if (t < 0.45) sin(PI * t / 0.45) else 0.0
+            val u = t - 0.38
+            val bell = if (u > 0) (sin(2 * PI * 2093.0 * u) + 0.3 * sin(2 * PI * 5776.7 * u) * exp(-u * 18)) * exp(-u * 7) * 0.035 else 0.0
+            band * env * 0.05 + bell
+        }
     }
 
-    /** Lights out: a soft switch click, then a few music-box notes saying goodnight. */
+    /** A soft "bloop", for the moon changing its hat. */
+    fun pop() {
+        var phase = 0.0
+        pcm(0.2) { t, _ ->
+            val f = 320 + 700 * (t / 0.08).coerceAtMost(1.0)
+            phase += 2 * PI * f / RATE
+            sin(phase) * exp(-t * 22) * (1 - exp(-t * 600)) * 0.06
+        }
+    }
+
+    /** "Tee-hee-hee", for the peekaboo cloud. */
+    fun giggle() {
+        val starts = doubleArrayOf(0.0, 0.15, 0.30)
+        val freqs = doubleArrayOf(980.0, 1080.0, 1220.0)
+        var phase = 0.0
+        pcm(0.5) { t, _ ->
+            var v = 0.0
+            for (i in starts.indices) {
+                val u = t - starts[i]
+                if (u in 0.0..0.11) {
+                    val env = sin(PI * u / 0.11)
+                    val f = freqs[i] * (1 + 0.04 * sin(2 * PI * 30 * u)) * (1 - 0.15 * u / 0.11)
+                    phase += 2 * PI * f / RATE
+                    v = (sin(phase) + 0.35 * sin(2 * phase) + 0.15 * sin(3 * phase)) * env * 0.03
+                }
+            }
+            v
+        }
+    }
+
+    /** A soft puff of air, for nudging the drifting cloud. */
+    fun puff() {
+        var low = 0.0
+        pcm(0.45) { t, _ ->
+            low += (Random.nextDouble() * 2 - 1 - low) * 0.12
+            low * sin(PI * t / 0.45).let { it * it } * 0.12
+        }
+    }
+
     fun lullaby() {
         // (start time in seconds, frequency) – a gentle falling tune
         val notes = listOf(0.25 to 1318.5, 0.6 to 1046.5, 0.95 to 784.0, 1.3 to 1046.5, 1.75 to 1174.7, 2.1 to 987.8, 2.45 to 784.0)
-        pcm(3.6, smooth = 1.0) { t, _ ->
+        pcm(3.6) { t, _ ->
             var v = if (t < 0.012) (Random.nextDouble() * 2 - 1) * 0.06 * (1 - t / 0.012) else 0.0   // click
             notes.forEach { (st, f) ->
                 if (t >= st) {
@@ -131,22 +178,33 @@ object Cheer {
         }
     }
 
-    /** A tiny pop, for the moon changing its hat. */
-    fun pop() = pcm(0.18) { t, _ -> sin(2 * PI * (520 + 900 * t / 0.18) * t) * exp(-t * 25) * 0.08 }
+    private const val RATE = 44100
 
-    private fun pcm(seconds: Double, smooth: Double = 0.35, wave: (Double, Double) -> Double) {
+    /** Make the sound sample by sample, add a little room echo so it sounds soft and round, and play it. */
+    private fun pcm(seconds: Double, wave: (Double, Double) -> Double) {
         Thread {
             runCatching {
-                val rate = 44100
-                val n = (seconds * rate).toInt()
-                // a gentle low-pass keeps the buzz soft
-                var lp = 0.0
-                val data = ShortArray(n) { i ->
-                    val t = i.toDouble() / rate
-                    lp += (wave(t, seconds) - lp) * smooth
-                    (lp.coerceIn(-1.0, 1.0) * 32000).toInt().toShort()
+                val n = (seconds * RATE).toInt()
+                val tail = (0.5 * RATE).toInt()
+                val dry = DoubleArray(n + tail)
+                for (i in 0 until n) dry[i] = wave(i.toDouble() / RATE, seconds)
+                // small reverb: four feedback echoes, mixed in quietly
+                val delays = intArrayOf(1327, 1559, 1801, 2063)
+                val bufs = delays.map { DoubleArray(it) }
+                val idx = IntArray(delays.size)
+                val out = ShortArray(n + tail)
+                for (i in out.indices) {
+                    var wet = 0.0
+                    for (c in delays.indices) {
+                        val b = bufs[c]; val y = b[idx[c]]
+                        b[idx[c]] = dry[i] + y * 0.5
+                        idx[c] = (idx[c] + 1) % b.size
+                        wet += y
+                    }
+                    val v = dry[i] + wet * 0.12
+                    out[i] = (v.coerceIn(-1.0, 1.0) * 32000).toInt().toShort()
                 }
-                play(data, rate)
+                play(out, RATE)
             }
         }.start()
     }
