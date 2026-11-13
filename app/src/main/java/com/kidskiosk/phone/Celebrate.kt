@@ -79,12 +79,31 @@ class ConfettiView(c: Context, private val colors: IntArray) : View(c) {
 /** A short happy tune made on the phone (no sound files needed). */
 object Cheer {
     /** A sleepy snore: a soft buzzy breath in and out (lower and longer for the moon). */
-    fun snore(big: Boolean) = pcm(if (big) 1.9 else 1.3) { t, total ->
-        val f = if (big) 82.0 else 150.0
-        val breath = sin(PI * t / total).let { it * it }
-        val buzz = ((t * f) % 1.0) * 2 - 1                         // sawtooth
-        val flutter = 0.6 + 0.4 * sin(2 * PI * (if (big) 22.0 else 30.0) * t)
-        (buzz * flutter * breath * 0.06 + (Random.nextDouble() * 2 - 1) * breath * 0.012)
+    fun snore(big: Boolean): Unit {
+        // a cartoon snore: a soft rumbly breath in ("hrrrr"), a short pause, then a gentle whistle out ("fyuuu")
+        val inEnd = if (big) 1.0 else 0.45
+        val outStart = inEnd + if (big) 0.2 else 0.1
+        val total = outStart + if (big) 1.0 else 0.6
+        var low = 0.0; var air = 0.0; var phase = 0.0
+        pcm(total, smooth = 1.0) { t, _ ->
+            val n = Random.nextDouble() * 2 - 1
+            low += (n - low) * (if (big) 0.025 else 0.06)          // deep rumble from filtered noise
+            air += (n - air) * 0.3                                  // soft breathy air
+            when {
+                t < inEnd -> {
+                    val env = sin(PI * t / inEnd).let { it * it }
+                    low * env * (if (big) 1.1 else 0.5) + air * env * 0.01
+                }
+                t < outStart -> 0.0
+                else -> {
+                    val p = (t - outStart) / (total - outStart)
+                    val env = sin(PI * p).let { it * it }
+                    val f = (if (big) 950.0 - 400.0 * p else 1500.0 - 500.0 * p) * (1 + 0.008 * sin(2 * PI * 5 * t))
+                    phase += 2 * PI * f / 44100
+                    sin(phase) * env * (if (big) 0.03 else 0.022) + air * env * 0.012
+                }
+            }
+        }
     }
 
     /** A quick rising whoosh with a little ding, for a star flying away. */
