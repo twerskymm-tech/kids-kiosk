@@ -148,6 +148,7 @@ object Remote {
             .put("goals", Chores.goalsJson(c))
             .put("shop", Shop.itemsJson(c))
             .put("shop_approve", Shop.approve(c))
+            .put("shop_name", Shop.name(c).takeIf { it != "Shop" } ?: "")
             .put("streak_bonus", Chores.streakBonus(c))
             .put("lucky_on", Chores.luckyOn(c))
             .put("gl_split", Prefs.greenlightSplit(c))
@@ -212,6 +213,7 @@ object Remote {
             Shop.setItems(c, a).forEach { (id, url) -> Slides.download(c, url, Shop.imageFile(c, id)) { Prefs.bumpPhoto(c) } }
         }
         if (s.has("shop_approve")) Shop.setApprove(c, s.optBoolean("shop_approve"))
+        if (s.has("shop_name")) Shop.setName(c, s.optString("shop_name"))
         s.optJSONObject("purchase_status")?.let { Shop.setStatus(c, it) }
         if (s.has("streak_bonus")) Chores.setStreakBonus(c, s.optInt("streak_bonus", 50))
         if (s.has("lucky_on")) Chores.setLuckyOn(c, s.optBoolean("lucky_on"))
