@@ -146,6 +146,8 @@ object Remote {
             .put("photos", Slides.json(c))
             .put("kid_colors", Chores.colorsJson(c))
             .put("goals", Chores.goalsJson(c))
+            .put("shop", Shop.itemsJson(c))
+            .put("shop_approve", Shop.approve(c))
             .put("streak_bonus", Chores.streakBonus(c))
             .put("lucky_on", Chores.luckyOn(c))
             .put("gl_split", Prefs.greenlightSplit(c))
@@ -172,6 +174,7 @@ object Remote {
             .put("earned", Chores.earnedAll(c))
             .put("claims", Chores.claims(c))
             .put("streaks", Chores.streaksJson(c))
+            .put("purchases", Shop.purchasesJson(c))
             .put("lifetime", JSONObject().apply { Chores.kids(c).forEach { put(it.lowercase(), Chores.lifetime(c, it)) } })
             .put("lock", JSONObject().put("reason", lock.reason.name).put("until", lock.until))
             .put("call_app", Prefs.callApp(c))
@@ -205,6 +208,11 @@ object Remote {
         s.optJSONObject("goals")?.let { j ->
             Chores.setGoals(c, j).forEach { (kid, url) -> Slides.download(c, url, Chores.goalFile(c, kid)) { Prefs.bumpPhoto(c) } }
         }
+        s.optJSONArray("shop")?.let { a ->
+            Shop.setItems(c, a).forEach { (id, url) -> Slides.download(c, url, Shop.imageFile(c, id)) { Prefs.bumpPhoto(c) } }
+        }
+        if (s.has("shop_approve")) Shop.setApprove(c, s.optBoolean("shop_approve"))
+        s.optJSONObject("purchase_status")?.let { Shop.setStatus(c, it) }
         if (s.has("streak_bonus")) Chores.setStreakBonus(c, s.optInt("streak_bonus", 50))
         if (s.has("lucky_on")) Chores.setLuckyOn(c, s.optBoolean("lucky_on"))
         if (s.has("gl_split")) Prefs.setGreenlightSplit(c, s.optBoolean("gl_split"))

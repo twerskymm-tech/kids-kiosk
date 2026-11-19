@@ -79,6 +79,8 @@ object Chores {
     }
     /** The parent paid the kid (from the control panel): take it off what's owed. */
     fun paid(c: Context, kid: String, cents: Int) = addEarned(c, kid, -cents, life = false)
+    /** She spent money in the shop (a negative amount gives it back). Doesn't touch her savings goal. */
+    fun spend(c: Context, kid: String, cents: Int) = addEarned(c, kid, -cents, life = false)
 
     // ── Everything she ever earned (payouts don't take it down): drives the savings goal ──
     private fun lifetimeAll(c: Context): JSONObject = runCatching { JSONObject(p(c).getString("lifetime", "{}")) }.getOrDefault(JSONObject())

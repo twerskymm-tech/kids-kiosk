@@ -329,6 +329,17 @@ class HomeActivity : AppCompatActivity() {
             }
             grid.addView(tile)
         }
+        // The kids' shop, once the parent has put something in it
+        if (Chores.enabled(this) && Shop.items(this).isNotEmpty()) {
+            val tile = Tile(this).apply {
+                tileColor = TILE_COLORS[(tiles.size + 1) % TILE_COLORS.size]
+                elevation = 0f
+                icon.setImageBitmap(emojiBitmap("\uD83D\uDECD\uFE0F"))
+                this.label.text = "Shop"
+                setOnClickListener { open(Intent(this@HomeActivity, ShopActivity::class.java)) }
+            }
+            grid.addView(tile)
+        }
     }
 
     /**
