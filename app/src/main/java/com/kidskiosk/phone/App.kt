@@ -61,6 +61,14 @@ class App : Application() {
             val am = getSystemService(AUDIO_SERVICE) as android.media.AudioManager
             if (am.isMusicActive) Kiosk.allowedApps(this).firstOrNull { it.contains("24") || it.contains("music") } else null
         }.getOrNull() ?: packageName
+        // Samsung: its own Media output (the one with "Listen together" tick boxes for 2 speakers)
+        val samsung = android.os.Build.MANUFACTURER.equals("samsung", true) && runCatching {
+            val i = Intent("com.android.settings.panel.action.MEDIA_OUTPUT")
+                .putExtra("com.android.settings.panel.extra.PACKAGE_NAME", playing)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            if (i.resolveActivity(packageManager) == null) false else { startActivity(i); true }
+        }.getOrDefault(false)
+        if (samsung) { handler.removeCallbacks(btWatch); handler.postDelayed(btWatch, 2000L); return }
         val opened = runCatching {
             // Android 13+: the system output picker
             sendBroadcast(Intent("com.android.systemui.action.LAUNCH_MEDIA_OUTPUT_DIALOG")
